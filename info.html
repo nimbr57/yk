@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>権限・NGワード一覧</title>
+  <title>権限・設定一覧</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
   <style>
     body { font-family: sans-serif; padding: 20px; }
@@ -18,7 +18,13 @@
     <h1>各種権限・設定一覧</h1>
     <p>あなたのID: <span id="my-id" style="font-weight:bold;"></span></p>
 
-    <h2>NGワード一覧 (/NG で追加, /OK で解除)</h2>
+    <h2>BANされているアカウント一覧 (/ban, /unban)</h2>
+    <table id="ban-table">
+      <thead><tr><th>BAN中のID</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <h2>NGワード一覧 (/NG, /OK)</h2>
     <table id="ng-table">
       <thead><tr><th>NGワード</th></tr></thead>
       <tbody></tbody>
@@ -93,6 +99,21 @@
           if (roleStr.length > 0) {
             rolesTbody.innerHTML += `<tr><td>${id}</td><td>${roleStr.join(" / ")}</td></tr>`;
           }
+        }
+      });
+
+      // BANデータの取得・表示
+      onValue(ref(db, 'settings/banned'), (snap) => {
+        const bannedData = snap.val() || {};
+        const banTbody = document.querySelector("#ban-table tbody");
+        banTbody.innerHTML = "";
+        const ids = Object.keys(bannedData);
+        if (ids.length === 0) {
+          banTbody.innerHTML = "<tr><td>登録なし</td></tr>";
+        } else {
+          ids.forEach(id => {
+            banTbody.innerHTML += `<tr><td style="color:red; font-weight:bold;">${id}</td></tr>`;
+          });
         }
       });
 
