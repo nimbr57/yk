@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>掲示板の使い方・コマンド一覧</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      line-height: 1.6;
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      border-bottom: 2px solid #333;
+      padding-bottom: 5px;
+    }
+    h2 {
+      color: #333;
+      margin-top: 30px;
+      border-left: 4px solid #e60000;
+      padding-left: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+      background-color: #fff;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    .role-owner { color: red; font-weight: bold; }
+    .role-summit { color: darkcyan; font-weight: bold; }
+    .role-moderator { color: #9400d3; font-weight: bold; }
+    .role-manager { color: red; font-weight: bold; }
+    .role-speaker { color: #ff8c00; font-weight: bold; }
+    .role-normal { color: blue; font-weight: bold; }
+    code {
+      background-color: #eee;
+      padding: 2px 5px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>掲示板の使い方・コマンド一覧</h1>
+  <p><a href="index.html">← 掲示板へ戻る</a></p>
+
+  <h2>基本の仕組み</h2>
+  <ul>
+    <li><strong>シード値:</strong> 投稿時に入力するシード値はパスワードのようなものです。この文字列を元にあなた専用の7桁のID（英数字）が生成されます。</li>
+    <li><strong>文字数制限:</strong> 通常のIDは <strong>50文字</strong> まで、Speaker以上の権限を持つIDは <strong>500文字</strong> まで投稿可能です。</li>
+    <li><strong>URL自動リンク:</strong> 投稿内容や話題にURLを含めると、自動的にクリックできるリンクになります。</li>
+    <li><strong>Discord連携:</strong> 投稿したメッセージは自動的にDiscordサーバーに記録されます。</li>
+  </ul>
+
+  <h2>権限（ランク）について</h2>
+  <p>特定のユーザーには管理・モデレーションのための権限が付与されます。権限によって名前に付くIDの色が変わり、使用できるコマンドが異なります。</p>
+  
+  <table>
+    <tr>
+      <th>権限名</th>
+      <th>IDの色</th>
+      <th>特徴・できること</th>
+    </tr>
+    <tr>
+      <td class="role-owner">Owner (運営)</td>
+      <td>赤</td>
+      <td>掲示板の管理者。すべてのコマンドを使用可能。</td>
+    </tr>
+    <tr>
+      <td class="role-summit">Summit</td>
+      <td>ダークシアン</td>
+      <td>他のユーザーにManager、Moderator権限を付与できる。</td>
+    </tr>
+    <tr>
+      <td class="role-moderator">Moderator</td>
+      <td>紫</td>
+      <td>名前の装飾や、NGワードの設定、Speaker権限の付与が可能。</td>
+    </tr>
+    <tr>
+      <td class="role-manager">Manager</td>
+      <td>赤</td>
+      <td>投稿の削除、自動削除の件数設定、話題の変更が可能。</td>
+    </tr>
+    <tr>
+      <td class="role-speaker">Speaker</td>
+      <td>オレンジ</td>
+      <td>500文字までの長文投稿が可能。NGワードの制限を受けない。</td>
+    </tr>
+    <tr>
+      <td class="role-normal">通常ユーザー</td>
+      <td>青</td>
+      <td>基本のランク。50文字制限、NGワード対象。</td>
+    </tr>
+  </table>
+
+  <h2>コマンド一覧</h2>
+  <p>メッセージ入力欄に以下のコマンドを入力して送信することで実行できます。（※必要な権限を持たない場合は弾かれます）</p>
+
+  <h3>Manager以上の権限が必要</h3>
+  <ul>
+    <li><code>/topic {話題}</code> : 掲示板上部の「今の話題」を変更します。（例: <code>/topic 好きな食べ物</code>）</li>
+    <li><code>/clear</code> : 掲示板の全投稿データを完全に削除し、番号をリセットします。</li>
+    <li><code>/max {数字}</code> : 指定した投稿数に達した瞬間に、自動で全件削除されるように設定します。</li>
+    <li><code>/del {番号1} {番号2}...</code> : 指定した投稿番号を「削除されました」状態にします。スペース区切りで複数指定可能です。</li>
+    <li><code>/destroy {文字列}</code> : 指定した文字列が含まれる投稿、または指定したIDの投稿を一括で削除状態にします。<br>
+      ※ <code>/destroy e</code> と入力するとすべての投稿が削除状態になります。
+    </li>
+  </ul>
+
+  <h3>Moderator以上の権限が必要</h3>
+  <ul>
+    <li><code>/NG {文字列}</code> : 指定した言葉をNGワードに登録します。通常ユーザーはその言葉を投稿できなくなり、過去の投稿も非表示になります。</li>
+    <li><code>/OK {文字列}</code> : 登録されているNGワードを解除します。</li>
+    <li><code>/color {カラーコード} {ID}</code> : 指定したIDの「名前の色」を変更します。（例: <code>/color #ff0000 a1b2c3d</code>）</li>
+    <li><code>/add {ID} {称号}</code> : 指定したIDに称号（タイトル）を付与します。</li>
+    <li><code>/speaker {ID}</code> : 対象ユーザーにSpeaker権限を付与します。</li>
+    <li><code>/disspeaker {ID}</code> : 対象ユーザーのSpeaker権限を解除します。</li>
+  </ul>
+
+  <h3>Summit以上の権限が必要</h3>
+  <ul>
+    <li><code>/manager {ID}</code> : Manager権限を付与します。</li>
+    <li><code>/dismanager {ID}</code> : Manager権限を解除します。</li>
+    <li><code>/moderator {ID}</code> : Moderator権限を付与します。</li>
+    <li><code>/dismoderator {ID}</code> : Moderator権限を解除します。</li>
+  </ul>
+
+  <h3>Owner (運営) のみ使用可能</h3>
+  <ul>
+    <li><code>/summit {ID}</code> : Summit権限を付与します。</li>
+    <li><code>/dissumit {ID}</code> : Summit権限を解除します。</li>
+  </ul>
+
+</body>
+</html>

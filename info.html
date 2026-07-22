@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>権限・NGワード一覧</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; max-width: 600px; margin-bottom: 30px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #f4f4f4; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div id="content" class="hidden">
+    <h1>各種権限・設定一覧</h1>
+    <p>あなたのID: <span id="my-id" style="font-weight:bold;"></span></p>
+
+    <h2>NGワード一覧 (/NG で追加, /OK で解除)</h2>
+    <table id="ng-table">
+      <thead><tr><th>NGワード</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <h2>権限一覧</h2>
+    <table id="roles-table">
+      <thead><tr><th>ID</th><th>権限</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyARQ86UM5HJENOkj0tVOYjGxMroGU7Gpbg",
+      authDomain: "bbs-html-2602e.firebaseapp.com",
+      databaseURL: "https://bbs-html-2602e-default-rtdb.firebaseio.com",
+      projectId: "bbs-html-2602e",
+      storageBucket: "bbs-html-2602e.firebasestorage.app",
+      messagingSenderId: "705823930466",
+      appId: "1:705823930466:web:36cd203ecf0a96b7c5f93b",
+      measurementId: "G-H5222XRG5T"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const OWNER_ID = "KF81wqJ";
+
+    function generateId(seed) {
+      const hash = CryptoJS.SHA256(seed);
+      const base64 = CryptoJS.enc.Base64.stringify(hash);
+      return base64.replace(/[^a-zA-Z0-9]/g, '').substring(0, 7);
+    }
+
+    const seed = window.prompt("管理者用シード値を入力してください:");
+    if (!seed) {
+      document.body.innerHTML = "<h2>アクセスがキャンセルされました。</h2>";
+    } else {
+      const myId = generateId(seed);
+
+      onValue(ref(db, 'users'), (snap) => {
+        const usersData = snap.val() || {};
+        const u = usersData[myId] || {};
+        
+        const isManagerOrHigher = (myId === OWNER_ID) || u.isSummit || u.isModerator || u.isManager;
+        
+        if (!isManagerOrHigher) {
+          document.body.innerHTML = "<h2>権限がありません。（マネージャー以上が必要です）</h2>";
+          return;
+        }
+
+        document.getElementById("content").classList.remove("hidden");
+        document.getElementById("my-id").textContent = myId;
+
+        const rolesTbody = document.querySelector("#roles-table tbody");
+        rolesTbody.innerHTML = "";
+        
+        if (myId === OWNER_ID) {
+          rolesTbody.innerHTML += `<tr><td>${OWNER_ID}</td><td style="color:red;font-weight:bold;">Owner (運営)</td></tr>`;
+        }
+
+        for (const [id, data] of Object.entries(usersData)) {
+          let roleStr = [];
+          if (data.isSummit) roleStr.push('<span style="color:darkcyan">Summit</span>');
+          if (data.isModerator) roleStr.push('<span style="color:#9400d3">Moderator</span>');
+          if (data.isManager) roleStr.push('<span style="color:red">Manager</span>');
+          if (data.isSpeaker) roleStr.push('<span style="color:#ff8c00">Speaker</span>');
+          
+          if (roleStr.length > 0) {
+            rolesTbody.innerHTML += `<tr><td>${id}</td><td>${roleStr.join(" / ")}</td></tr>`;
+          }
+        }
+      });
+
+      onValue(ref(db, 'settings/ngWords'), (snap) => {
+        const ngData = snap.val() || {};
+        const ngTbody = document.querySelector("#ng-table tbody");
+        ngTbody.innerHTML = "";
+        const words = Object.values(ngData);
+        if (words.length === 0) {
+          ngTbody.innerHTML = "<tr><td>登録なし</td></tr>";
+        } else {
+          words.forEach(w => {
+            ngTbody.innerHTML += `<tr><td>${w}</td></tr>`;
+          });
+        }
+      });
+    }
+  </script>
+</body>
+</html>
