@@ -32,7 +32,6 @@
     }
     .filter-container {
       margin: 15px 0;
-      /* font-weight: bold を削除し、通常の太さに変更 */
       color: black;
     }
   </style>
@@ -117,7 +116,6 @@
     const settingsRef = ref(db, 'settings');
 
     const OWNER_ID = "KF81wqJ";
-    const DISCORD_WEBHOOK_URL = "https://ptb.discord.com/api/webhooks/1529464843680088165/yeSVBAz03ILtVBkB21GsqJAKNaZUATe3D9wQS6DFWVczzd4wX6TMVA5TbTZ69D7eESdh";
 
     let currentMessagesList = [];
     let usersData = {}; 
@@ -125,6 +123,8 @@
     let ngWordsList = [];
     let maxPostsLimit = null;
     let globalTopic = "特にありません";
+    let bannedData = {};
+    let currentIp = "";
 
     const nameInput = document.getElementById('name');
     const seedInput = document.getElementById('seed');
@@ -133,6 +133,23 @@
 
     if (localStorage.getItem('savedName')) nameInput.value = localStorage.getItem('savedName');
     if (localStorage.getItem('savedSeed')) seedInput.value = localStorage.getItem('savedSeed');
+
+    // 自分のIPアドレスを取得
+    fetch("https://api.ipify.org?format=json")
+      .then(res => res.json())
+      .then(data => {
+        currentIp = data.ip;
+        checkBanStatus();
+      }).catch(e => console.log("IP取得エラー"));
+
+    function checkBanStatus() {
+      if (!currentIp) return;
+      const bannedIPs = Object.values(bannedData);
+      if (bannedIPs.includes(currentIp)) {
+        // BANされている場合、画面を真っ白にして操作不能にする
+        document.body.innerHTML = "<h1 style='color:red; text-align:center; margin-top:50px;'>アクセスが禁止されています（BAN）</h1>";
+      }
+    }
 
     function generateId(seed) {
       const hash = CryptoJS.SHA256(seed);
@@ -258,6 +275,8 @@
       ngWordsList = Object.values(ngWordsMap);
       maxPostsLimit = s.maxPosts || null;
       globalTopic = s.topic || "特にありません";
+      bannedData = s.banned || {};
+      checkBanStatus(); // 設定が変わるたびにBANチェック
       renderBoard();
     });
 
@@ -273,18 +292,6 @@
       });
       renderBoard();
     });
-
-    function sendToDiscord(username, userId, messageContent) {
-      if (!messageContent) return;
-      fetch(DISCORD_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: `${username}@${userId}`,
-          content: messageContent
-        })
-      }).catch(err => console.error("Discord webhook error:", err));
-    }
 
     document.getElementById('post-form').addEventListener('submit', (e) => {
       e.preventDefault();
@@ -325,18 +332,44 @@
       const isModeratorOrHigher = isCmdOwner || isCmdSummit || isCmdModerator;
       const isSummitOrHigher = isCmdOwner || isCmdSummit;
 
+      // 投稿者のIPアドレスを記録
+      if (currentIp) {
+        processPromises.push(update(ref(db, `users/${userId}`), { ip: currentIp }));
+      }
+
       if (message.startsWith("/topic ") && isManagerOrHigher) {
         const newTopic = message.substring(7).trim();
         processPromises.push(set(ref(db, 'settings/topic'), newTopic));
       }
 
       if (message.startsWith("/")) {
-        if (message === "/clear" || message.startsWith("/del ") || message.startsWith("/destroy ") || message.startsWith("/max ")) {
+        if (message === "/clear" || message.startsWith("/del ") || message.startsWith("/destroy ") || message.startsWith("/max ") || message.startsWith("/ban ") || message.startsWith("/unban ")) {
           if (!isManagerOrHigher) {
             alert("権限がありません。マネージャー以上が必要です。");
             commandCancelled = true;
           } else {
-            if (message === "/clear") {
+            if (message.startsWith("/ban ")) {
+              const targetId = message.substring(5).trim();
+              if (targetId) {
+                const targetIp = usersData[targetId] && usersData[targetId].ip;
+                if (targetIp) {
+                  processPromises.push(update(ref(db, 'settings/banned'), { [targetId]: targetIp }));
+                  alert(`${targetId}のIPアクセスを禁止しました。`);
+                } else {
+                  alert("対象ユーザーのIPアドレスが記録されていません。（一度でも投稿している必要があります）");
+                }
+              }
+              commandCancelled = true;
+            }
+            else if (message.startsWith("/unban ")) {
+              const targetId = message.substring(7).trim();
+              if (targetId) {
+                processPromises.push(remove(ref(db, `settings/banned/${targetId}`)));
+                alert(`${targetId}のBANを解除しました。`);
+              }
+              commandCancelled = true;
+            }
+            else if (message === "/clear") {
               if (confirm("すべての投稿データを削除しますか？")) processPromises.push(remove(messagesRef));
               else commandCancelled = true; 
             } 
@@ -451,10 +484,6 @@
         processPromises.push(
           remove(messagesRef).then(() => {
             const karupasText = "ｶﾙﾊﾟｽ".repeat(33);
-            sendToDiscord("System", "System", "自動削除しました");
-            sendToDiscord("カルパス財団", "Karupas", karupasText);
-            sendToDiscord(name, userId, message);
-
             return Promise.all([
               push(messagesRef, { name: "System", userId: "System", message: "自動削除しました", isDeleted: false, timestamp: serverTimestamp() }),
               push(messagesRef, { name: "カルパス財団", userId: "Karupas", message: karupasText, isDeleted: false, timestamp: serverTimestamp() }),
@@ -463,7 +492,6 @@
           })
         );
       } else {
-        sendToDiscord(name, userId, message);
         processPromises.push(push(messagesRef, {
           name: name,
           userId: userId,
