@@ -3,43 +3,100 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>権限・設定一覧</title>
+  <title>連番を簡単に生成！！</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+  
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    table { border-collapse: collapse; width: 100%; max-width: 600px; margin-bottom: 30px; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-    th { background-color: #f4f4f4; }
-    .hidden { display: none; }
+    #example4 {
+      font-size: 26px;
+      margin: 10px 0;
+      background: linear-gradient(
+        to right,
+        #e60000,
+        #f39800,
+        #fff100,
+        #009944,
+        #0068b7,
+        #1d2088,
+        #920783,
+        #e60000
+      ) 0 / 200%;
+      animation: 5s example4 linear infinite;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    @keyframes example4 {
+      100% {
+        background-position: 200%;
+      }
+    }
+    .filter-container {
+      margin: 15px 0;
+      color: black;
+    }
   </style>
 </head>
 <body>
-  <div id="content" class="hidden">
-    <h1>各種権限・設定一覧</h1>
-    <p>あなたのID: <span id="my-id" style="font-weight:bold;"></span></p>
 
-    <h2>BANされているアカウント一覧 (/ban, /unban)</h2>
-    <table id="ban-table">
-      <thead><tr><th>BAN中のID</th></tr></thead>
-      <tbody></tbody>
-    </table>
+  <a href="home.html">Yuki Youtube</a>
 
-    <h2>NGワード一覧 (/NG, /OK)</h2>
-    <table id="ng-table">
-      <thead><tr><th>NGワード</th></tr></thead>
-      <tbody></tbody>
-    </table>
+  <h1 id="example4">掲示板</h1>
 
-    <h2>権限一覧</h2>
-    <table id="roles-table">
-      <thead><tr><th>ID</th><th>権限</th></tr></thead>
-      <tbody></tbody>
-    </table>
+  <div>
+    新規さんへ、まずは挨拶をしましょう。シード値は自分のidを決めるものでパスワードのようなものです。<br>
+    今の話題に勇気を出して参加してみましょう！！！<br>
+    メッセージが送れない場合メッセージや名前が規制されている可能性があります。<br>
+    <a href="use.html">使い方</a>
   </div>
+
+  <form id="post-form">
+    <label for="msg">メッセージ</label>
+    <textarea
+      name="message"
+      rows="6"
+      cols="100"
+      maxlength="50"
+      id="msg"
+      required
+    ></textarea>
+    <p></p>
+    <label for="name">名前</label>
+    <input
+      type="text"
+      id="name"
+      name="name"
+      value=""
+      maxlength="25"
+      required
+    />
+    <label for="seed">シード</label>
+    <input type="text" id="seed" name="seed" value="" required />
+    <button type="submit" id="submit">送信する</button>
+  </form>
+
+  <div class="filter-container">
+    <label for="speaker-filter">スピーカー以上のメッセージのみ表示</label>
+    <input type="checkbox" id="speaker-filter">
+  </div>
+
+  <h2>投稿</h2>
+  <h3 style="color: black; font-weight: bold;">今の話題：<span id="current-topic">特にありません</span></h3>
+
+  <table border="1">
+    <thead>
+      <tr>
+        <th>No</th>
+        <th>名前</th>
+        <th>投稿</th>
+      </tr>
+    </thead>
+    <tbody id="board-body">
+    </tbody>
+  </table>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+    import { getDatabase, ref, push, onValue, serverTimestamp, update, remove, set } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyARQ86UM5HJENOkj0tVOYjGxMroGU7Gpbg",
@@ -54,7 +111,43 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    const OWNER_ID = "KF81wqJ";
+    const messagesRef = ref(db, 'messages');
+    const usersRef = ref(db, 'users');
+    const settingsRef = ref(db, 'settings');
+
+    const OWNER_ID = "KF81wqJ"; // マスター運営のID
+
+    let currentMessagesList = [];
+    let usersData = {}; 
+    let ngWordsMap = {};
+    let ngWordsList = [];
+    let maxPostsLimit = null;
+    let globalTopic = "特にありません";
+    let bannedData = {};
+    let currentIp = "";
+
+    const nameInput = document.getElementById('name');
+    const seedInput = document.getElementById('seed');
+    const msgInput = document.getElementById('msg');
+    const speakerFilter = document.getElementById('speaker-filter');
+
+    if (localStorage.getItem('savedName')) nameInput.value = localStorage.getItem('savedName');
+    if (localStorage.getItem('savedSeed')) seedInput.value = localStorage.getItem('savedSeed');
+
+    fetch("https://api.ipify.org?format=json")
+      .then(res => res.json())
+      .then(data => {
+        currentIp = data.ip;
+        checkBanStatus();
+      }).catch(e => console.log("IP取得エラー"));
+
+    function checkBanStatus() {
+      if (!currentIp) return;
+      const bannedIPs = Object.values(bannedData);
+      if (bannedIPs.includes(currentIp)) {
+        document.body.innerHTML = "<h1 style='color:red; text-align:center; margin-top:50px;'>アクセスが禁止されています（BAN）</h1>";
+      }
+    }
 
     function generateId(seed) {
       const hash = CryptoJS.SHA256(seed);
@@ -62,76 +155,367 @@
       return base64.replace(/[^a-zA-Z0-9]/g, '').substring(0, 7);
     }
 
-    const seed = window.prompt("管理者用シード値を入力してください:");
-    if (!seed) {
-      document.body.innerHTML = "<h2>アクセスがキャンセルされました。</h2>";
-    } else {
-      const myId = generateId(seed);
+    function isSpecialUser(userId) {
+      if (userId === OWNER_ID || userId === "System" || userId === "Karupas") return true;
+      const u = usersData[userId];
+      return u && (u.isOwner || u.isSummit || u.isModerator || u.isManager || u.isSpeaker);
+    }
 
-      onValue(ref(db, 'users'), (snap) => {
-        const usersData = snap.val() || {};
-        const u = usersData[myId] || {};
-        
-        const isManagerOrHigher = (myId === OWNER_ID) || u.isOwner || u.isSummit || u.isModerator || u.isManager;
-        
-        if (!isManagerOrHigher) {
-          document.body.innerHTML = "<h2>権限がありません。（マネージャー以上が必要です）</h2>";
+    function updateMaxLength() {
+      const seedVal = seedInput.value.trim();
+      const userId = seedVal ? generateId(seedVal) : null;
+      msgInput.maxLength = (userId && isSpecialUser(userId)) ? 500 : 50;
+    }
+    seedInput.addEventListener('input', updateMaxLength);
+    speakerFilter.addEventListener('change', renderBoard);
+
+    function linkify(text) {
+      const container = document.createDocumentFragment();
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      let lastIndex = 0;
+      let match;
+      while ((match = urlRegex.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+          container.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
+        }
+        const a = document.createElement('a');
+        a.href = match[0];
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = match[0];
+        container.appendChild(a);
+        lastIndex = urlRegex.lastIndex;
+      }
+      if (lastIndex < text.length) {
+        container.appendChild(document.createTextNode(text.substring(lastIndex)));
+      }
+      return container;
+    }
+
+    function renderBoard() {
+      updateMaxLength(); 
+      const tbody = document.getElementById('board-body');
+      const currentTopicSpan = document.getElementById('current-topic');
+      const speakerOnly = speakerFilter.checked;
+      tbody.innerHTML = ''; 
+
+      for (let i = currentMessagesList.length - 1; i >= 0; i--) {
+        const msg = currentMessagesList[i];
+        const no = i + 1;
+
+        if (speakerOnly && !isSpecialUser(msg.userId)) continue; 
+
+        if (!isSpecialUser(msg.userId)) {
+          const containsNG = ngWordsList.some(word => msg.message.includes(word));
+          if (containsNG) continue; 
+        }
+
+        const tr = document.createElement('tr');
+        const tdNo = document.createElement('td');
+        tdNo.textContent = no;
+        tr.appendChild(tdNo);
+
+        const tdName = document.createElement('td');
+        const tdMessage = document.createElement('td');
+
+        if (msg.isDeleted) {
+          tdName.textContent = "削除されました";
+          tdMessage.textContent = "削除されました";
+        } else {
+          const displayName = msg.name || '名無し';
+          const u = usersData[msg.userId] || {};
+          const customTitle = u.title;
+          const spanName = document.createElement('span');
+
+          if (msg.userId === OWNER_ID || msg.userId === "System" || msg.userId === "Karupas" || u.isOwner) {
+            spanName.style.color = "red";
+            spanName.textContent = displayName;
+            tdName.appendChild(spanName);
+          } else {
+            const customNameColor = u.nameColor;
+            spanName.style.color = customNameColor ? customNameColor : "black";
+            spanName.textContent = displayName; 
+            tdName.appendChild(spanName);
+            
+            const spanId = document.createElement('span');
+            if (u.isSummit) spanId.style.color = "darkcyan";
+            else if (u.isModerator) spanId.style.color = "#9400d3";
+            else if (u.isManager) spanId.style.color = "red";
+            else if (u.isSpeaker) spanId.style.color = "#ff8c00";
+            else spanId.style.color = "blue";
+            
+            spanId.textContent = `@${msg.userId}`; 
+            tdName.appendChild(spanId);
+          }
+
+          if (customTitle) {
+            const spanTitle = document.createElement('span');
+            spanTitle.style.color = "magenta";
+            spanTitle.textContent = ` ${customTitle}`;
+            tdName.appendChild(spanTitle);
+          }
+
+          tdMessage.appendChild(linkify(msg.message));
+        }
+
+        tr.appendChild(tdName);
+        tr.appendChild(tdMessage);
+        tbody.appendChild(tr);
+      }
+      
+      currentTopicSpan.innerHTML = '';
+      currentTopicSpan.appendChild(linkify(globalTopic));
+    }
+
+    onValue(settingsRef, (snapshot) => {
+      const s = snapshot.val() || {};
+      ngWordsMap = s.ngWords || {};
+      ngWordsList = Object.values(ngWordsMap);
+      maxPostsLimit = s.maxPosts || null;
+      globalTopic = s.topic || "特にありません";
+      bannedData = s.banned || {};
+      checkBanStatus(); 
+      renderBoard();
+    });
+
+    onValue(usersRef, (snapshot) => {
+      usersData = snapshot.val() || {};
+      renderBoard();
+    });
+
+    onValue(messagesRef, (snapshot) => {
+      currentMessagesList = [];
+      snapshot.forEach((childSnapshot) => {
+        currentMessagesList.push({ key: childSnapshot.key, ...childSnapshot.val() });
+      });
+      renderBoard();
+    });
+
+    document.getElementById('post-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const message = msgInput.value.trim();
+      const name = nameInput.value.trim();
+      const seedVal = seedInput.value.trim();
+      if (!message || !seedVal) return;
+
+      const userId = generateId(seedVal);
+      const isSpec = isSpecialUser(userId);
+      const charLimit = isSpec ? 500 : 50;
+
+      if (message.length > charLimit) {
+        alert(`文字数制限エラーです。あなたの権限では${charLimit}文字までです。`);
+        return;
+      }
+
+      if (!isSpec) {
+        const containsNG = ngWordsList.some(word => message.includes(word));
+        if (containsNG) {
+          alert("NGワードが含まれているため投稿できません。");
           return;
         }
+      }
 
-        document.getElementById("content").classList.remove("hidden");
-        document.getElementById("my-id").textContent = myId;
+      localStorage.setItem('savedName', name);
+      localStorage.setItem('savedSeed', seedVal);
 
-        const rolesTbody = document.querySelector("#roles-table tbody");
-        rolesTbody.innerHTML = "";
-        
-        // マスター運営の表示
-        rolesTbody.innerHTML += `<tr><td>${OWNER_ID}</td><td style="color:red;font-weight:bold;">Root Owner (最高管理者)</td></tr>`;
+      let processPromises = [];
 
-        for (const [id, data] of Object.entries(usersData)) {
-          if (id === OWNER_ID) continue; // Root Ownerは上で出しているのでスキップ
+      const isCmdRoot = (userId === OWNER_ID); 
+      const isCmdOwner = isCmdRoot || (usersData[userId] && usersData[userId].isOwner);
+      const isCmdSummit = usersData[userId] && usersData[userId].isSummit;
+      const isCmdModerator = usersData[userId] && usersData[userId].isModerator;
+      const isCmdManager = usersData[userId] && usersData[userId].isManager;
 
-          let roleStr = [];
-          if (data.isOwner) roleStr.push('<span style="color:red;font-weight:bold;">Owner (運営)</span>');
-          if (data.isSummit) roleStr.push('<span style="color:darkcyan">Summit</span>');
-          if (data.isModerator) roleStr.push('<span style="color:#9400d3">Moderator</span>');
-          if (data.isManager) roleStr.push('<span style="color:red">Manager</span>');
-          if (data.isSpeaker) roleStr.push('<span style="color:#ff8c00">Speaker</span>');
-          
-          if (roleStr.length > 0) {
-            rolesTbody.innerHTML += `<tr><td>${id}</td><td>${roleStr.join(" / ")}</td></tr>`;
+      const isManagerOrHigher = isCmdOwner || isCmdSummit || isCmdModerator || isCmdManager;
+      const isModeratorOrHigher = isCmdOwner || isCmdSummit || isCmdModerator;
+      const isSummitOrHigher = isCmdOwner || isCmdSummit;
+
+      if (currentIp) {
+        processPromises.push(update(ref(db, `users/${userId}`), { ip: currentIp }));
+      }
+
+      // --- コマンド解析（実行結果は processPromises に追加され、後で投稿もされる） ---
+      if (message.startsWith("/topic ") && isManagerOrHigher) {
+        const newTopic = message.substring(7).trim();
+        processPromises.push(set(ref(db, 'settings/topic'), newTopic));
+      }
+
+      if (message.startsWith("/")) {
+        if (message.startsWith("/owner ") || message.startsWith("/disowner ")) {
+          if (!isCmdRoot) {
+            alert("権限がありません。最高管理者(KF81wqJ)のみ実行可能です。");
+          } else {
+            const targetId = message.split(" ")[1];
+            if (targetId) {
+              if (targetId === OWNER_ID) {
+                alert("自身(KF81wqJ)への権限変更は無効です。");
+              } else {
+                if (message.startsWith("/owner ")) processPromises.push(update(ref(db, `users/${targetId}`), { isOwner: true }));
+                else if (message.startsWith("/disowner ")) processPromises.push(update(ref(db, `users/${targetId}`), { isOwner: false }));
+                alert(`ユーザー ${targetId} の運営権限を更新しました。`);
+              }
+            }
           }
         }
-      });
-
-      onValue(ref(db, 'settings/banned'), (snap) => {
-        const bannedData = snap.val() || {};
-        const banTbody = document.querySelector("#ban-table tbody");
-        banTbody.innerHTML = "";
-        const ids = Object.keys(bannedData);
-        if (ids.length === 0) {
-          banTbody.innerHTML = "<tr><td>登録なし</td></tr>";
-        } else {
-          ids.forEach(id => {
-            banTbody.innerHTML += `<tr><td style="color:red; font-weight:bold;">${id}</td></tr>`;
-          });
+        else if (message === "/clear" || message.startsWith("/del ") || message.startsWith("/destroy ") || message.startsWith("/max ") || message.startsWith("/ban ") || message.startsWith("/unban ")) {
+          if (!isManagerOrHigher) {
+            alert("権限がありません。マネージャー以上が必要です。");
+          } else {
+            if (message.startsWith("/ban ")) {
+              const targetId = message.substring(5).trim();
+              if (targetId) {
+                const targetIp = usersData[targetId] && usersData[targetId].ip;
+                if (targetIp) {
+                  processPromises.push(update(ref(db, 'settings/banned'), { [targetId]: targetIp }));
+                  alert(`${targetId}のIPアクセスを禁止しました。`);
+                } else {
+                  alert("対象ユーザーのIPアドレスが記録されていません。（一度でも投稿している必要があります）");
+                }
+              }
+            }
+            else if (message.startsWith("/unban ")) {
+              const targetId = message.substring(7).trim();
+              if (targetId) {
+                processPromises.push(remove(ref(db, `settings/banned/${targetId}`)));
+                alert(`${targetId}のBANを解除しました。`);
+              }
+            }
+            else if (message === "/clear") {
+              if (confirm("すべての投稿データを削除しますか？")) {
+                processPromises.push(remove(messagesRef));
+              } else {
+                return; // キャンセルの場合は投稿も中止
+              }
+            } 
+            else if (message.startsWith("/max ")) {
+              const maxNum = parseInt(message.substring(5).trim(), 10);
+              if (!isNaN(maxNum) && maxNum > 0) processPromises.push(set(ref(db, 'settings/maxPosts'), maxNum));
+            }
+            else if (message.startsWith("/del ")) {
+              const parts = message.split(" ");
+              parts.slice(1).forEach(p => {
+                const targetNo = parseInt(p, 10);
+                if (!isNaN(targetNo) && targetNo > 0 && targetNo <= currentMessagesList.length) {
+                  processPromises.push(update(messagesRef, { [`${currentMessagesList[targetNo - 1].key}/isDeleted`]: true }));
+                }
+              });
+            }
+            else if (message.startsWith("/destroy ")) {
+              const target = message.substring(9).trim();
+              if (target === "e") {
+                if (confirm("すべて削除状態にしますか？")) {
+                  const updates = {};
+                  currentMessagesList.forEach(m => { updates[m.key + '/isDeleted'] = true; });
+                  processPromises.push(update(messagesRef, updates));
+                } else {
+                  return; // キャンセルの場合は投稿も中止
+                }
+              } else if (target) {
+                const updates = {};
+                currentMessagesList.forEach(m => {
+                  if (m.userId === target || (m.message && m.message.includes(target))) updates[m.key + '/isDeleted'] = true;
+                });
+                processPromises.push(update(messagesRef, updates));
+              }
+            }
+          }
         }
-      });
-
-      onValue(ref(db, 'settings/ngWords'), (snap) => {
-        const ngData = snap.val() || {};
-        const ngTbody = document.querySelector("#ng-table tbody");
-        ngTbody.innerHTML = "";
-        const words = Object.values(ngData);
-        if (words.length === 0) {
-          ngTbody.innerHTML = "<tr><td>登録なし</td></tr>";
-        } else {
-          words.forEach(w => {
-            ngTbody.innerHTML += `<tr><td>${w}</td></tr>`;
-          });
+        else if (message.startsWith("/add ") || message.startsWith("/color ") || message.startsWith("/speaker ") || message.startsWith("/disspeaker ") || message.startsWith("/NG ") || message.startsWith("/OK ")) {
+          if (!isModeratorOrHigher) {
+            alert("権限がありません。モデレーター以上が必要です。");
+          } else {
+            const parts = message.split(" ");
+            if (message.startsWith("/NG ")) {
+              const word = message.substring(4).trim();
+              if(word) processPromises.push(push(ref(db, 'settings/ngWords'), word));
+            }
+            else if (message.startsWith("/OK ")) {
+              const word = message.substring(4).trim();
+              if(word) {
+                const key = Object.keys(ngWordsMap).find(k => ngWordsMap[k] === word);
+                if(key) processPromises.push(remove(ref(db, `settings/ngWords/${key}`)));
+              }
+            }
+            else if (message.startsWith("/color ")) {
+              const colorCode = parts[1];
+              const targetId = parts[2];
+              if (colorCode && targetId) processPromises.push(update(ref(db, `users/${targetId}`), { nameColor: colorCode }));
+            }
+            else {
+              const targetId = parts[1];
+              if (targetId) {
+                if (message.startsWith("/add ")) processPromises.push(update(ref(db, `users/${targetId}`), { title: parts.slice(2).join(" ") }));
+                else if (message.startsWith("/speaker ")) processPromises.push(update(ref(db, `users/${targetId}`), { isSpeaker: true }));
+                else if (message.startsWith("/disspeaker ")) processPromises.push(update(ref(db, `users/${targetId}`), { isSpeaker: false }));
+              }
+            }
+          }
         }
-      });
-    }
+        else if (message.startsWith("/manager ") || message.startsWith("/dismanager ") || message.startsWith("/moderator ") || message.startsWith("/dismoderator ")) {
+          if (!isSummitOrHigher) {
+            alert("権限がありません。サミット以上が必要です。");
+          } else {
+            const targetId = message.split(" ")[1];
+            if (targetId) {
+              if (message.startsWith("/manager ")) processPromises.push(update(ref(db, `users/${targetId}`), { isManager: true }));
+              else if (message.startsWith("/dismanager ")) processPromises.push(update(ref(db, `users/${targetId}`), { isManager: false }));
+              else if (message.startsWith("/moderator ")) processPromises.push(update(ref(db, `users/${targetId}`), { isModerator: true }));
+              else if (message.startsWith("/dismoderator ")) processPromises.push(update(ref(db, `users/${targetId}`), { isModerator: false }));
+            }
+          }
+        }
+        else if (message.startsWith("/summit ") || message.startsWith("/dissumit ")) {
+          if (!isCmdOwner) {
+            alert("権限がありません。運営のみ実行可能です。");
+          } else {
+            const targetId = message.split(" ")[1];
+            if (targetId) {
+              if (message.startsWith("/summit ")) processPromises.push(update(ref(db, `users/${targetId}`), { isSummit: true }));
+              else if (message.startsWith("/dissumit ")) processPromises.push(update(ref(db, `users/${targetId}`), { isSummit: false }));
+            }
+          }
+        }
+      }
+
+      // --- コマンド実行後、入力されたテキストをメッセージとして投稿する処理 ---
+      const willExceedMax = (maxPostsLimit && currentMessagesList.length + 1 >= maxPostsLimit);
+      
+      let pushMessageTask;
+      if (willExceedMax) {
+        // 上限オーバーの場合：削除の後にメッセージを投稿
+        pushMessageTask = remove(messagesRef).then(() => {
+          const karupasText = "ｶﾙﾊﾟｽ".repeat(33);
+          return Promise.all([
+            push(messagesRef, { name: "System", userId: "System", message: "自動削除しました", isDeleted: false, timestamp: serverTimestamp() }),
+            push(messagesRef, { name: "カルパス財団", userId: "Karupas", message: karupasText, isDeleted: false, timestamp: serverTimestamp() }),
+            push(messagesRef, { name: name, userId: userId, message: message, isDeleted: false, timestamp: serverTimestamp() })
+          ]);
+        });
+      } else {
+        // 通常の投稿
+        pushMessageTask = push(messagesRef, {
+          name: name,
+          userId: userId,
+          message: message,
+          isDeleted: false,
+          timestamp: serverTimestamp()
+        });
+      }
+
+      // コマンド処理などのPromiseがすべて終わってからメッセージをPushし、リロードする
+      Promise.all(processPromises)
+        .then(() => pushMessageTask)
+        .then(() => {
+          window.location.reload();
+        })
+        .catch((error) => {
+          alert("処理に失敗しました。");
+          console.error(error);
+        });
+    });
   </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/darkmode-js@1.5.7/lib/darkmode-js.min.js"></script>
+  <script>window.addEventListener('load', () => new Darkmode().showWidget());</script>
 </body>
 </html>
