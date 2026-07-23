@@ -1,11 +1,14 @@
-# 💬 Yuki's Realtime BBS
+# 💬 連番を簡単に生成！！
 
 ![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
 ![Firebase](https://img.shields.io/badge/firebase-ffca28?style=for-the-badge&logo=firebase&logoColor=black)
+[![Discord](https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/3ZnhpYnMjk)
 
 **パスワード不要、完全匿名の次世代リアルタイム掲示板**  
 シード値とSHA-256アルゴリズムを用いた独自の認証システムと、チャット欄から直接実行できる強力なコマンドライン・モデレーション機能を搭載しています。
+
+🗣️ **公式Discordサーバー:** [ご参加はこちらから！(https://discord.gg/3ZnhpYnMjk)](https://discord.gg/3ZnhpYnMjk)
 
 ---
 
@@ -72,9 +75,3 @@
 2. Firebase Consoleで新規プロジェクトを作成し、Realtime Databaseを有効化します。
 3. `index.html` と `info.html` の `<script type="module">` 内にある `firebaseConfig` を、ご自身のFirebaseプロジェクトの情報に書き換えます。
 4. HTMLファイルをウェブサーバー（GitHub Pages, Vercel, Firebase Hostingなど）にデプロイして完了です。
-
----
-
-## 👨‍💻 Author
-
-**Yuki Youtube**
