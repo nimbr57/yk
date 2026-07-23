@@ -72,7 +72,7 @@
         const usersData = snap.val() || {};
         const u = usersData[myId] || {};
         
-        const isManagerOrHigher = (myId === OWNER_ID) || u.isSummit || u.isModerator || u.isManager;
+        const isManagerOrHigher = (myId === OWNER_ID) || u.isOwner || u.isSummit || u.isModerator || u.isManager;
         
         if (!isManagerOrHigher) {
           document.body.innerHTML = "<h2>権限がありません。（マネージャー以上が必要です）</h2>";
@@ -85,12 +85,14 @@
         const rolesTbody = document.querySelector("#roles-table tbody");
         rolesTbody.innerHTML = "";
         
-        if (myId === OWNER_ID) {
-          rolesTbody.innerHTML += `<tr><td>${OWNER_ID}</td><td style="color:red;font-weight:bold;">Owner (運営)</td></tr>`;
-        }
+        // マスター運営の表示
+        rolesTbody.innerHTML += `<tr><td>${OWNER_ID}</td><td style="color:red;font-weight:bold;">Root Owner (最高管理者)</td></tr>`;
 
         for (const [id, data] of Object.entries(usersData)) {
+          if (id === OWNER_ID) continue; // Root Ownerは上で出しているのでスキップ
+
           let roleStr = [];
+          if (data.isOwner) roleStr.push('<span style="color:red;font-weight:bold;">Owner (運営)</span>');
           if (data.isSummit) roleStr.push('<span style="color:darkcyan">Summit</span>');
           if (data.isModerator) roleStr.push('<span style="color:#9400d3">Moderator</span>');
           if (data.isManager) roleStr.push('<span style="color:red">Manager</span>');
@@ -102,7 +104,6 @@
         }
       });
 
-      // BANデータの取得・表示
       onValue(ref(db, 'settings/banned'), (snap) => {
         const bannedData = snap.val() || {};
         const banTbody = document.querySelector("#ban-table tbody");
