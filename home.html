@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>連番を簡単に生成！！</title>
+  
+  <style>
+    body {
+      font-family: sans-serif;
+      line-height: 1.6;
+      padding: 20px;
+      max-width: 900px;
+      margin: 0 auto;
+      background-color: #f9f9f9;
+      color: #333;
+    }
+    h1 {
+      border-bottom: 2px solid #0068b7;
+      padding-bottom: 10px;
+      color: #0068b7;
+    }
+    p.intro {
+      font-size: 1.1em;
+      margin-bottom: 30px;
+    }
+    
+    /* カード型のグリッドレイアウト */
+    .grid-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background-color: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: flex;
+      flex-direction: column;
+    }
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+    }
+    .card h2 {
+      margin-top: 0;
+      color: #333;
+      font-size: 1.4em;
+    }
+    .card p {
+      color: #666;
+      flex-grow: 1; /* ボタンを下に押し下げるため */
+    }
+    .card a.btn {
+      display: inline-block;
+      text-align: center;
+      background-color: #0068b7;
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 15px;
+      border-radius: 5px;
+      font-weight: bold;
+      transition: background-color 0.2s;
+      margin-top: 15px;
+    }
+    .card a.btn:hover {
+      background-color: #004d8a;
+    }
+    
+    /* フッター */
+    .footer {
+      margin-top: 50px;
+      text-align: center;
+      font-size: 0.9em;
+      color: #999;
+      border-top: 1px solid #ddd;
+      padding-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Welcome to 連番を簡単に生成！！</h1>
+  <p class="intro">このサイトで利用できるコンテンツの一覧です。目的のページへアクセスしてください。</p>
+
+  <div class="grid-container">
+    
+    <!-- 1. 掲示板 -->
+    <div class="card">
+      <h2>💬 メイン掲示板</h2>
+      <p>みんなで雑談するためのリアルタイム掲示板です。シード値を入力して自分だけのIDを作成し、今の話題に参加してみましょう！</p>
+      <a href="index.html" class="btn">掲示板へ行く</a>
+    </div>
+
+    <!-- 2. お気に入りIDジェネレーター -->
+    <div class="card">
+      <h2>🎲 IDジェネレーター</h2>
+      <p>好きな文字列が含まれる「お気に入りのID」と、そのIDになるための「シード値」を総当たりで検索・生成できるツールです。</p>
+      <a href="id.html" class="btn">ジェネレーターを開く</a>
+    </div>
+
+    <!-- 3. 使い方ページ -->
+    <div class="card">
+      <h2>📖 掲示板の使い方</h2>
+      <p>掲示板の基本的な使い方や、文字数の制限、禁止事項などが書かれています。初めての方はこちらをご覧ください。</p>
+      <a href="use.html" class="btn">使い方を見る</a>
+    </div>
+
+    <!-- 4. 管理者用ページ -->
+    <div class="card">
+      <h2>⚙️ 権限・設定一覧 (管理者用)</h2>
+      <p>現在の運営メンバー、モデレーター、BANされたユーザー、設定されているNGワードの一覧を確認できる専用ページです。<br><small>※閲覧にはマネージャー以上の権限（シード値）が必要です。</small></p>
+      <a href="info.html" class="btn">管理画面を開く</a>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    &copy; 2026 Yuki Youtube All Rights Reserved.
+  </div>
+
+  <!-- ダークモードプラグイン（掲示板と合わせる場合） -->
+  <script src="https://cdn.jsdelivr.net/npm/darkmode-js@1.5.7/lib/darkmode-js.min.js"></script>
+  <script>window.addEventListener('load', () => new Darkmode().showWidget());</script>
+</body>
+</html>
