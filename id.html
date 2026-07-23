@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>お気に入りIDジェネレーター</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+  
+  <style>
+    body {
+      font-family: sans-serif;
+      line-height: 1.6;
+      padding: 20px;
+      max-width: 900px;
+      margin: 0 auto;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      border-bottom: 2px solid #333;
+      padding-bottom: 5px;
+    }
+    .container {
+      background-color: #fff;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 8px 16px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+      background-color: #0068b7;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+    }
+    button:hover { background-color: #004d8a; }
+    button:disabled { background-color: #ccc; cursor: not-allowed; }
+    
+    input[type="text"] {
+      padding: 8px;
+      font-size: 16px;
+      width: 200px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    
+    #status {
+      font-weight: bold;
+      color: #e60000;
+      margin-top: 10px;
+    }
+    .note {
+      font-size: 0.9em;
+      color: #666;
+      margin-top: 10px;
+    }
+
+    /* --- テーブルとスクロール枠のスタイル --- */
+    .results-wrapper {
+      max-height: 500px; /* スクロール枠の高さ */
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      background-color: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+      position: sticky; /* スクロールしてもヘッダーを上部に固定 */
+      top: 0;
+      z-index: 1;
+    }
+    .id-val {
+      font-weight: bold;
+      color: #0068b7;
+    }
+    .seed-cell {
+      cursor: pointer;
+      color: #333;
+      text-decoration: underline;
+      transition: background-color 0.2s;
+    }
+    .seed-cell:hover {
+      background-color: #e6f2ff;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>お気に入りIDジェネレーター</h1>
+  <p><a href="index.html">← 掲示板へ戻る</a></p>
+
+  <div class="container">
+    <h2>IDを生成・検索する</h2>
+    <p>テキストボックスが<strong>空の場合はランダムに100個</strong>生成します。<br>半角英数字を入力した場合は、その文字が含まれるIDを総当たりで検索します。</p>
+    
+    <label for="search-input">検索文字列 (半角英数字のみ): </label>
+    <input type="text" id="search-input" maxlength="7" pattern="[a-zA-Z0-9]+" oninput="this.value = this.value.replace(/[^a-zA-Z0-9]/g, '');" placeholder="例: yuki">
+    <button id="btn-generate">生成 / 検索する</button>
+    
+    <div class="note">
+      ※検索する場合、最大200万回試行した時点で終了します。<br>
+      ※表の「シード値」をクリックするとクリップボードにコピーできます。
+    </div>
+    <div id="status">ここにステータスが表示されます</div>
+  </div>
+
+  <h2>結果</h2>
+  <div class="results-wrapper">
+    <table id="result-table">
+      <thead>
+        <tr>
+          <th style="width: 10%;">No.</th>
+          <th style="width: 30%;">生成されたID (7桁)</th>
+          <th style="width: 60%;">使用したシード値 (クリックでコピー)</th>
+        </tr>
+      </thead>
+      <tbody id="result-body">
+        <!-- ここに結果が追加されます -->
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    function generateId(seed) {
+      const hash = CryptoJS.SHA256(seed);
+      const base64 = CryptoJS.enc.Base64.stringify(hash);
+      return base64.replace(/[^a-zA-Z0-9]/g, '').substring(0, 7);
+    }
+
+    function getRandomSeed() {
+      return Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+    }
+
+    // シード値をクリックしたときにコピーする関数
+    window.copySeed = function(element, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        // コピー成功時に背景色を一瞬変えて視覚的に知らせる
+        const originalBg = element.style.backgroundColor;
+        const originalText = element.textContent;
+        element.style.backgroundColor = "#d4edda"; // 薄い緑色
+        element.textContent = "コピーしました！";
+        
+        setTimeout(() => {
+          element.style.backgroundColor = originalBg;
+          element.textContent = text;
+        }, 800);
+      }).catch(err => {
+        alert("コピーに失敗しました。お使いのブラウザは対応していない可能性があります。");
+      });
+    };
+
+    const resultBody = document.getElementById('result-body');
+    const statusDiv = document.getElementById('status');
+    const btnGenerate = document.getElementById('btn-generate');
+
+    // 結果をテーブルに表示する関数
+    function renderResults(results) {
+      resultBody.innerHTML = "";
+      if (results.length === 0) {
+        resultBody.innerHTML = "<tr><td colspan='3' style='text-align:center; color:red;'>見つかりませんでした。</td></tr>";
+        return;
+      }
+      
+      results.forEach((item, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${index + 1}</td>
+          <td class="id-val">${item.id}</td>
+          <td class="seed-cell" onclick="copySeed(this, '${item.seed}')" title="クリックでコピー">${item.seed}</td>
+        `;
+        resultBody.appendChild(tr);
+      });
+    }
+
+    btnGenerate.addEventListener('click', () => {
+      const targetStr = document.getElementById('search-input').value;
+
+      // --- テキストボックスが空の場合（ランダム100個生成） ---
+      if (!targetStr) {
+        statusDiv.textContent = "ランダムに100個生成しました。";
+        statusDiv.style.color = "blue";
+        const results = [];
+        for (let i = 0; i < 100; i++) {
+          const seed = getRandomSeed();
+          const id = generateId(seed);
+          results.push({ seed, id });
+        }
+        renderResults(results);
+        return;
+      }
+
+      // --- 文字列が入力されている場合（総当たり検索） ---
+      resultBody.innerHTML = "";
+      btnGenerate.disabled = true;
+      statusDiv.style.color = "#e60000";
+
+      const maxResults = 100;           
+      const maxAttemptsTotal = 2000000; 
+      const batchSize = 10000;          
+      
+      let results = [];
+      let totalAttempts = 0;
+
+      function searchBatch() {
+        let batchAttempts = 0;
+
+        while (results.length < maxResults && batchAttempts < batchSize && totalAttempts < maxAttemptsTotal) {
+          const seed = getRandomSeed();
+          const id = generateId(seed);
+          
+          if (id.includes(targetStr)) {
+            results.push({ seed, id });
+          }
+          batchAttempts++;
+          totalAttempts++;
+        }
+
+        statusDiv.textContent = `検索中... (${totalAttempts.toLocaleString()} 回試行, ${results.length} 件発見)`;
+
+        if (results.length >= maxResults || totalAttempts >= maxAttemptsTotal) {
+          btnGenerate.disabled = false;
+          
+          if (results.length === 0) {
+            statusDiv.textContent = `200万回試行しましたが、見つかりませんでした。`;
+          } else if (results.length < maxResults) {
+            statusDiv.textContent = `200万回試行し、${results.length}件見つかりました。`;
+            statusDiv.style.color = "blue";
+          } else {
+            statusDiv.textContent = `100件見つかりました！（試行回数: ${totalAttempts.toLocaleString()}回）`;
+            statusDiv.style.color = "blue";
+          }
+          
+          renderResults(results);
+        } else {
+          setTimeout(searchBatch, 0);
+        }
+      }
+
+      searchBatch();
+    });
+  </script>
+</body>
+</html>
