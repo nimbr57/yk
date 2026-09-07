@@ -80,7 +80,9 @@
   </div>
 
   <h2>投稿</h2>
-  <h3 style="color: black; font-weight: bold;">今の話題：<span id="current-topic">特にありません</span></h3>
+  <h3 style="color: black; font-weight: bold;">
+    今の話題：<span id="topic-prefix" style="display: none;"></span><span id="current-topic">特にありません</span>
+  </h3>
 
   <table border="1">
     <thead>
@@ -122,9 +124,10 @@
     let ngWordsMap = {};
     let ngWordsList = [];
     let maxPostsLimit = null;
-    let globalTopic = "特にありません";
+    let globalTopic = { text: "特にありません", isOwner: false };
     let bannedData = {};
     let currentIp = "";
+    let prohibitUntil = null; 
 
     const nameInput = document.getElementById('name');
     const seedInput = document.getElementById('seed');
@@ -141,18 +144,23 @@
         checkBanStatus();
       }).catch(e => console.log("IP取得エラー"));
 
-    function checkBanStatus() {
-      if (!currentIp) return;
-      const bannedIPs = Object.values(bannedData);
-      if (bannedIPs.includes(currentIp)) {
-        document.body.innerHTML = "<h1 style='color:red; text-align:center; margin-top:50px;'>アクセスが禁止されています（BAN）</h1>";
-      }
-    }
-
     function generateId(seed) {
       const hash = CryptoJS.SHA256(seed);
       const base64 = CryptoJS.enc.Base64.stringify(hash);
       return base64.replace(/[^a-zA-Z0-9]/g, '').substring(0, 7);
+    }
+
+    function checkBanStatus() {
+      const seedVal = seedInput.value.trim();
+      const currentUserId = seedVal ? generateId(seedVal) : null;
+      
+      const bannedIPs = Object.values(bannedData);
+      const isBannedIp = currentIp && bannedIPs.includes(currentIp);
+      const isBannedId = currentUserId && bannedData.hasOwnProperty(currentUserId);
+      
+      if (isBannedIp || isBannedId) {
+        document.body.innerHTML = "<h1 style='color:red; text-align:center; margin-top:50px;'>アクセスが禁止されています（BAN）</h1>";
+      }
     }
 
     function isSpecialUser(userId) {
@@ -166,7 +174,12 @@
       const userId = seedVal ? generateId(seedVal) : null;
       msgInput.maxLength = (userId && isSpecialUser(userId)) ? 500 : 50;
     }
-    seedInput.addEventListener('input', updateMaxLength);
+    
+    seedInput.addEventListener('input', () => {
+      updateMaxLength();
+      checkBanStatus();
+    });
+    
     speakerFilter.addEventListener('change', renderBoard);
 
     function linkify(text) {
@@ -192,70 +205,151 @@
       return container;
     }
 
+    function formatOwnerMessage(htmlString) {
+      const parser = new DOMParser();
+      const parsedHtml = htmlString.replace(/\n/g, '<br>');
+      const doc = parser.parseFromString(parsedHtml, 'text/html');
+      
+      function walk(node) {
+        if (node.nodeType === 3) {
+          const txt = node.nodeValue;
+          const urlRegex = /(https?:\/\/[^\s]+)/g;
+          if (urlRegex.test(txt) && node.parentNode.tagName.toLowerCase() !== 'a') {
+            const frag = document.createDocumentFragment();
+            let lastIndex = 0;
+            let match;
+            urlRegex.lastIndex = 0;
+            while ((match = urlRegex.exec(txt)) !== null) {
+              if (match.index > lastIndex) {
+                frag.appendChild(document.createTextNode(txt.substring(lastIndex, match.index)));
+              }
+              const a = document.createElement('a');
+              a.href = match[0];
+              a.target = "_blank";
+              a.rel = "noopener noreferrer";
+              a.textContent = match[0];
+              frag.appendChild(a);
+              lastIndex = urlRegex.lastIndex;
+            }
+            if (lastIndex < txt.length) {
+              frag.appendChild(document.createTextNode(txt.substring(lastIndex)));
+            }
+            node.parentNode.replaceChild(frag, node);
+          }
+        } else if (node.nodeType === 1) {
+          Array.from(node.childNodes).forEach(walk);
+        }
+      }
+      Array.from(doc.body.childNodes).forEach(walk);
+      return doc.body.innerHTML;
+    }
+
+    setInterval(() => {
+      if (prohibitUntil) renderBoard();
+    }, 10000);
+
     function renderBoard() {
       updateMaxLength(); 
       const tbody = document.getElementById('board-body');
       const currentTopicSpan = document.getElementById('current-topic');
+      const topicPrefix = document.getElementById('topic-prefix');
       const speakerOnly = speakerFilter.checked;
       tbody.innerHTML = ''; 
+
+      if (prohibitUntil && Date.now() < prohibitUntil) {
+        const d = new Date(prohibitUntil);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        topicPrefix.innerHTML = `<span style="color:red;">${hh}:${mm}まで青シードによる投稿禁止 </span>`;
+        topicPrefix.style.display = "inline";
+      } else {
+        topicPrefix.style.display = "none";
+      }
 
       for (let i = currentMessagesList.length - 1; i >= 0; i--) {
         const msg = currentMessagesList[i];
         const no = i + 1;
+        const snap = msg.userSnapshot || {}; 
 
-        if (speakerOnly && !isSpecialUser(msg.userId)) continue; 
+        let uData = usersData[msg.userId] || {};
+        let isMsgOwner = snap.hasOwnProperty('isOwner') ? snap.isOwner : (msg.userId === OWNER_ID || uData.isOwner);
+        let isMsgSummit = snap.hasOwnProperty('isSummit') ? snap.isSummit : uData.isSummit;
+        let isMsgModerator = snap.hasOwnProperty('isModerator') ? snap.isModerator : uData.isModerator;
+        let isMsgManager = snap.hasOwnProperty('isManager') ? snap.isManager : uData.isManager;
+        let isMsgSpeaker = snap.hasOwnProperty('isSpeaker') ? snap.isSpeaker : uData.isSpeaker;
+        let msgNameColor = snap.hasOwnProperty('nameColor') ? snap.nameColor : uData.nameColor;
+        let msgTitle = snap.hasOwnProperty('title') ? snap.title : uData.title;
 
-        if (!isSpecialUser(msg.userId)) {
+        const isMsgSpecial = isMsgOwner || isMsgSummit || isMsgModerator || isMsgManager || isMsgSpeaker || msg.userId === "System" || msg.userId === "Karupas";
+
+        if (speakerOnly && !isMsgSpecial) continue; 
+
+        if (!isMsgSpecial) {
           const containsNG = ngWordsList.some(word => msg.message.includes(word));
           if (containsNG) continue; 
         }
 
         const tr = document.createElement('tr');
+        
         const tdNo = document.createElement('td');
         tdNo.textContent = no;
+        if (msg.timestamp) {
+          const d = new Date(msg.timestamp);
+          tdNo.title = d.toLocaleString('ja-JP'); 
+        }
+        tdNo.style.cursor = 'help';
         tr.appendChild(tdNo);
 
         const tdName = document.createElement('td');
         const tdMessage = document.createElement('td');
 
+        tdName.style.cursor = 'pointer';
+        tdName.title = "クリックしてIDをコピー";
+        tdName.addEventListener('click', () => {
+          navigator.clipboard.writeText(msg.userId).catch(e => console.log("コピー失敗:", e));
+        });
+
         if (msg.isDeleted) {
           tdName.textContent = "削除されました";
+          tdName.style.cursor = "default";
+          tdName.title = "";
           tdMessage.textContent = "削除されました";
         } else {
           const displayName = msg.name || '名無し';
-          const u = usersData[msg.userId] || {};
-          const customTitle = u.title;
           const spanName = document.createElement('span');
 
-          if (msg.userId === OWNER_ID || msg.userId === "System" || msg.userId === "Karupas" || u.isOwner) {
+          if (msg.userId === OWNER_ID || msg.userId === "System" || msg.userId === "Karupas" || isMsgOwner) {
             spanName.style.color = "red";
-            spanName.textContent = displayName;
+            spanName.innerHTML = displayName; 
             tdName.appendChild(spanName);
           } else {
-            const customNameColor = u.nameColor;
-            spanName.style.color = customNameColor ? customNameColor : "black";
+            spanName.style.color = msgNameColor ? msgNameColor : "black";
             spanName.textContent = displayName; 
             tdName.appendChild(spanName);
             
             const spanId = document.createElement('span');
-            if (u.isSummit) spanId.style.color = "darkcyan";
-            else if (u.isModerator) spanId.style.color = "#9400d3";
-            else if (u.isManager) spanId.style.color = "red";
-            else if (u.isSpeaker) spanId.style.color = "#ff8c00";
+            if (isMsgSummit) spanId.style.color = "darkcyan";
+            else if (isMsgModerator) spanId.style.color = "#9400d3";
+            else if (isMsgManager) spanId.style.color = "red";
+            else if (isMsgSpeaker) spanId.style.color = "#ff8c00";
             else spanId.style.color = "blue";
             
             spanId.textContent = `@${msg.userId}`; 
             tdName.appendChild(spanId);
           }
 
-          if (customTitle) {
+          if (msgTitle) {
             const spanTitle = document.createElement('span');
             spanTitle.style.color = "magenta";
-            spanTitle.textContent = ` ${customTitle}`;
+            spanTitle.textContent = ` ${msgTitle}`;
             tdName.appendChild(spanTitle);
           }
 
-          tdMessage.appendChild(linkify(msg.message));
+          if (msg.userId === OWNER_ID || msg.userId === "System" || msg.userId === "Karupas" || isMsgOwner) {
+            tdMessage.innerHTML = formatOwnerMessage(msg.message);
+          } else {
+            tdMessage.appendChild(linkify(msg.message));
+          }
         }
 
         tr.appendChild(tdName);
@@ -264,7 +358,11 @@
       }
       
       currentTopicSpan.innerHTML = '';
-      currentTopicSpan.appendChild(linkify(globalTopic));
+      if (globalTopic.isOwner) {
+        currentTopicSpan.innerHTML = formatOwnerMessage(globalTopic.text);
+      } else {
+        currentTopicSpan.appendChild(linkify(globalTopic.text));
+      }
     }
 
     onValue(settingsRef, (snapshot) => {
@@ -272,8 +370,15 @@
       ngWordsMap = s.ngWords || {};
       ngWordsList = Object.values(ngWordsMap);
       maxPostsLimit = s.maxPosts || null;
-      globalTopic = s.topic || "特にありません";
+      
+      if (typeof s.topic === 'string') {
+        globalTopic = { text: s.topic, isOwner: false };
+      } else {
+        globalTopic = s.topic || { text: "特にありません", isOwner: false };
+      }
+      
       bannedData = s.banned || {};
+      prohibitUntil = s.prohibitUntil || null;
       checkBanStatus(); 
       renderBoard();
     });
@@ -307,6 +412,16 @@
         return;
       }
 
+      const uData = usersData[userId] || {};
+      const isNormalUser = !isSpec;
+      if (isNormalUser && prohibitUntil && Date.now() < prohibitUntil) {
+        const d = new Date(prohibitUntil);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        alert(`現在、青シードによる投稿は制限されています。（${hh}:${mm}まで）`);
+        return;
+      }
+
       if (!isSpec) {
         const containsNG = ngWordsList.some(word => message.includes(word));
         if (containsNG) {
@@ -321,10 +436,10 @@
       let processPromises = [];
 
       const isCmdRoot = (userId === OWNER_ID); 
-      const isCmdOwner = isCmdRoot || (usersData[userId] && usersData[userId].isOwner);
-      const isCmdSummit = usersData[userId] && usersData[userId].isSummit;
-      const isCmdModerator = usersData[userId] && usersData[userId].isModerator;
-      const isCmdManager = usersData[userId] && usersData[userId].isManager;
+      const isCmdOwner = isCmdRoot || (uData.isOwner);
+      const isCmdSummit = uData.isSummit;
+      const isCmdModerator = uData.isModerator;
+      const isCmdManager = uData.isManager;
 
       const isManagerOrHigher = isCmdOwner || isCmdSummit || isCmdModerator || isCmdManager;
       const isModeratorOrHigher = isCmdOwner || isCmdSummit || isCmdModerator;
@@ -334,14 +449,49 @@
         processPromises.push(update(ref(db, `users/${userId}`), { ip: currentIp }));
       }
 
-      // --- コマンド解析（実行結果は processPromises に追加され、後で投稿もされる） ---
       if (message.startsWith("/topic ") && isManagerOrHigher) {
         const newTopic = message.substring(7).trim();
-        processPromises.push(set(ref(db, 'settings/topic'), newTopic));
+        processPromises.push(set(ref(db, 'settings/topic'), {
+          text: newTopic,
+          isOwner: isCmdOwner
+        }));
       }
 
       if (message.startsWith("/")) {
-        if (message.startsWith("/owner ") || message.startsWith("/disowner ")) {
+        if (message.startsWith("/prohibit ")) {
+          if (!isCmdOwner) {
+            alert("権限がありません。Owner以上が必要です。");
+          } else {
+            const mins = parseInt(message.split(" ")[1], 10);
+            if (!isNaN(mins) && mins > 0) {
+              const endTime = Date.now() + mins * 60 * 1000;
+              processPromises.push(set(ref(db, 'settings/prohibitUntil'), endTime));
+            }
+          }
+        }
+        else if (message === "/permit") {
+          if (!isCmdOwner) {
+            alert("権限がありません。Owner以上が必要です。");
+          } else {
+            processPromises.push(remove(ref(db, 'settings/prohibitUntil')));
+          }
+        }
+        else if (message === "/disself") {
+          if (!isCmdOwner) { 
+            processPromises.push(update(ref(db, `users/${userId}`), {
+              isSummit: null,
+              isModerator: null,
+              isManager: null,
+              isSpeaker: null,
+              nameColor: null,
+              title: null
+            }));
+            uData.isSummit = false; uData.isModerator = false; uData.isManager = false; uData.isSpeaker = false; uData.nameColor = null; uData.title = null;
+          } else {
+            alert("運営（Owner以上）は /disself を使用できません。");
+          }
+        }
+        else if (message.startsWith("/owner ") || message.startsWith("/disowner ")) {
           if (!isCmdRoot) {
             alert("権限がありません。最高管理者(KF81wqJ)のみ実行可能です。");
           } else {
@@ -352,40 +502,35 @@
               } else {
                 if (message.startsWith("/owner ")) processPromises.push(update(ref(db, `users/${targetId}`), { isOwner: true }));
                 else if (message.startsWith("/disowner ")) processPromises.push(update(ref(db, `users/${targetId}`), { isOwner: false }));
-                alert(`ユーザー ${targetId} の運営権限を更新しました。`);
               }
             }
           }
         }
-        else if (message === "/clear" || message.startsWith("/del ") || message.startsWith("/destroy ") || message.startsWith("/max ") || message.startsWith("/ban ") || message.startsWith("/unban ")) {
-          if (!isManagerOrHigher) {
-            alert("権限がありません。マネージャー以上が必要です。");
+        else if (message.startsWith("/ban ") || message.startsWith("/unban ")) {
+          if (!isSummitOrHigher) {
+            alert("権限がありません。サミット以上が必要です。");
           } else {
             if (message.startsWith("/ban ")) {
               const targetId = message.substring(5).trim();
               if (targetId) {
                 const targetIp = usersData[targetId] && usersData[targetId].ip;
-                if (targetIp) {
-                  processPromises.push(update(ref(db, 'settings/banned'), { [targetId]: targetIp }));
-                  alert(`${targetId}のIPアクセスを禁止しました。`);
-                } else {
-                  alert("対象ユーザーのIPアドレスが記録されていません。（一度でも投稿している必要があります）");
-                }
+                processPromises.push(update(ref(db, 'settings/banned'), { [targetId]: targetIp || "ID-ONLY" }));
               }
-            }
-            else if (message.startsWith("/unban ")) {
+            } else if (message.startsWith("/unban ")) {
               const targetId = message.substring(7).trim();
               if (targetId) {
                 processPromises.push(remove(ref(db, `settings/banned/${targetId}`)));
-                alert(`${targetId}のBANを解除しました。`);
               }
             }
-            else if (message === "/clear") {
-              if (confirm("すべての投稿データを削除しますか？")) {
-                processPromises.push(remove(messagesRef));
-              } else {
-                return; // キャンセルの場合は投稿も中止
-              }
+          }
+        }
+        else if (message === "/clear" || message.startsWith("/del ") || message.startsWith("/destroy ") || message.startsWith("/max ")) {
+          if (!isManagerOrHigher) {
+            alert("権限がありません。マネージャー以上が必要です。");
+          } else {
+            if (message === "/clear") {
+              if (confirm("すべての投稿データを削除しますか？")) processPromises.push(remove(messagesRef));
+              else return; 
             } 
             else if (message.startsWith("/max ")) {
               const maxNum = parseInt(message.substring(5).trim(), 10);
@@ -407,9 +552,7 @@
                   const updates = {};
                   currentMessagesList.forEach(m => { updates[m.key + '/isDeleted'] = true; });
                   processPromises.push(update(messagesRef, updates));
-                } else {
-                  return; // キャンセルの場合は投稿も中止
-                }
+                } else return;
               } else if (target) {
                 const updates = {};
                 currentMessagesList.forEach(m => {
@@ -477,32 +620,39 @@
         }
       }
 
-      // --- コマンド実行後、入力されたテキストをメッセージとして投稿する処理 ---
+      const userSnapshot = {
+        nameColor: uData.nameColor || null,
+        title: uData.title || null,
+        isOwner: isCmdOwner,
+        isSummit: isCmdSummit || false,
+        isModerator: isCmdModerator || false,
+        isManager: isCmdManager || false,
+        isSpeaker: uData.isSpeaker || false
+      };
+
       const willExceedMax = (maxPostsLimit && currentMessagesList.length + 1 >= maxPostsLimit);
       
       let pushMessageTask;
       if (willExceedMax) {
-        // 上限オーバーの場合：削除の後にメッセージを投稿
         pushMessageTask = remove(messagesRef).then(() => {
           const karupasText = "ｶﾙﾊﾟｽ".repeat(33);
           return Promise.all([
             push(messagesRef, { name: "System", userId: "System", message: "自動削除しました", isDeleted: false, timestamp: serverTimestamp() }),
             push(messagesRef, { name: "カルパス財団", userId: "Karupas", message: karupasText, isDeleted: false, timestamp: serverTimestamp() }),
-            push(messagesRef, { name: name, userId: userId, message: message, isDeleted: false, timestamp: serverTimestamp() })
+            push(messagesRef, { name: name, userId: userId, message: message, isDeleted: false, timestamp: serverTimestamp(), userSnapshot: userSnapshot })
           ]);
         });
       } else {
-        // 通常の投稿
         pushMessageTask = push(messagesRef, {
           name: name,
           userId: userId,
           message: message,
           isDeleted: false,
-          timestamp: serverTimestamp()
+          timestamp: serverTimestamp(),
+          userSnapshot: userSnapshot
         });
       }
 
-      // コマンド処理などのPromiseがすべて終わってからメッセージをPushし、リロードする
       Promise.all(processPromises)
         .then(() => pushMessageTask)
         .then(() => {
