@@ -46,7 +46,11 @@
     新規さんへ、まずは挨拶をしましょう。シード値は自分のidを決めるものでパスワードのようなものです。<br>
     今の話題に勇気を出して参加してみましょう！！！<br>
     メッセージが送れない場合メッセージや名前が規制されている可能性があります。<br>
-    <a href="use.html">使い方</a>
+    <a href="use.html">使い方</a><br>
+    <select id="channel-select">
+      <option value="general">雑談</option>
+      <option value="battle">バトルスタジアム</option>
+    </select>
   </div>
 
   <form id="post-form">
@@ -100,7 +104,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
     import { getDatabase, ref, push, onValue, serverTimestamp, update, remove, set } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-    const firebaseConfig = {
+    const firebaseConfigGeneral = {
       apiKey: "AIzaSyARQ86UM5HJENOkj0tVOYjGxMroGU7Gpbg",
       authDomain: "bbs-html-2602e.firebaseapp.com",
       databaseURL: "https://bbs-html-2602e-default-rtdb.firebaseio.com",
@@ -111,28 +115,59 @@
       measurementId: "G-H5222XRG5T"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    const messagesRef = ref(db, 'messages');
-    const usersRef = ref(db, 'users');
-    const settingsRef = ref(db, 'settings');
+    const firebaseConfigBattle = {
+      apiKey: "AIzaSyCPQf2LsXY7A7GPRUMz-iXtE76zfMC0OTs",
+      authDomain: "battlestudium-bbs.firebaseapp.com",
+      databaseURL: "https://battlestudium-bbs-default-rtdb.firebaseio.com",
+      projectId: "battlestudium-bbs",
+      storageBucket: "battlestudium-bbs.firebasestorage.app",
+      messagingSenderId: "806890207931",
+      appId: "1:806890207931:web:29a417057731e0e2d1479e",
+      measurementId: "G-5K00RZEMV0"
+    };
 
-    const OWNER_ID = "KF81wqJ"; // マスター運営のID
+    const appGeneral = initializeApp(firebaseConfigGeneral, "general");
+    const dbGeneral = getDatabase(appGeneral);
 
-    let currentMessagesList = [];
-    let usersData = {}; 
-    let ngWordsMap = {};
-    let ngWordsList = [];
-    let maxPostsLimit = null;
-    let globalTopic = { text: "特にありません", isOwner: false };
-    let bannedData = {};
+    const appBattle = initializeApp(firebaseConfigBattle, "battle");
+    const dbBattle = getDatabase(appBattle);
+
+    const OWNER_ID = "KF81wqJ";
+
+    let activeChannel = localStorage.getItem('savedChannel') || "general";
+
+    let state = {
+      general: {
+        messagesList: [],
+        usersData: {},
+        ngWordsMap: {},
+        ngWordsList: [],
+        maxPostsLimit: null,
+        topic: { text: "特にありません", isOwner: false },
+        bannedData: {},
+        prohibitUntil: null
+      },
+      battle: {
+        messagesList: [],
+        usersData: {},
+        ngWordsMap: {},
+        ngWordsList: [],
+        maxPostsLimit: null,
+        topic: { text: "ここは無法地帯。", isOwner: false },
+        bannedData: {},
+        prohibitUntil: null
+      }
+    };
+
     let currentIp = "";
-    let prohibitUntil = null; 
 
     const nameInput = document.getElementById('name');
     const seedInput = document.getElementById('seed');
     const msgInput = document.getElementById('msg');
     const speakerFilter = document.getElementById('speaker-filter');
+    const channelSelect = document.getElementById('channel-select');
+
+    channelSelect.value = activeChannel;
 
     if (localStorage.getItem('savedName')) nameInput.value = localStorage.getItem('savedName');
     if (localStorage.getItem('savedSeed')) seedInput.value = localStorage.getItem('savedSeed');
@@ -150,13 +185,58 @@
       return base64.replace(/[^a-zA-Z0-9]/g, '').substring(0, 7);
     }
 
+    // 両チャンネルのユーザーデータを統合して取得する関数
+    function getUserData(userId) {
+      if (!userId) return {};
+      const g = (state.general && state.general.usersData && state.general.usersData[userId]) || {};
+      const b = (state.battle && state.battle.usersData && state.battle.usersData[userId]) || {};
+      return {
+        isOwner: Boolean(g.isOwner || b.isOwner),
+        isSummit: Boolean(g.isSummit || b.isSummit),
+        isModerator: Boolean(g.isModerator || b.isModerator),
+        isManager: Boolean(g.isManager || b.isManager),
+        isSpeaker: Boolean(g.isSpeaker || b.isSpeaker),
+        nameColor: g.nameColor || b.nameColor || null,
+        title: g.title || b.title || null,
+        ip: g.ip || b.ip || null
+      };
+    }
+
+    // 両データベースへの権限一括更新ヘルパー
+    function updateBothUsers(targetId, data) {
+      return Promise.all([
+        update(ref(dbGeneral, `users/${targetId}`), data),
+        update(ref(dbBattle, `users/${targetId}`), data)
+      ]);
+    }
+
+    // 両データベースへのBAN一括更新ヘルパー
+    function updateBothBanned(targetId, ip) {
+      return Promise.all([
+        update(ref(dbGeneral, 'settings/banned'), { [targetId]: ip }),
+        update(ref(dbBattle, 'settings/banned'), { [targetId]: ip })
+      ]);
+    }
+
+    function removeBothBanned(targetId) {
+      return Promise.all([
+        remove(ref(dbGeneral, `settings/banned/${targetId}`)),
+        remove(ref(dbBattle, `settings/banned/${targetId}`))
+      ]);
+    }
+
     function checkBanStatus() {
       const seedVal = seedInput.value.trim();
       const currentUserId = seedVal ? generateId(seedVal) : null;
       
-      const bannedIPs = Object.values(bannedData);
-      const isBannedIp = currentIp && bannedIPs.includes(currentIp);
-      const isBannedId = currentUserId && bannedData.hasOwnProperty(currentUserId);
+      const bannedIPsGen = Object.values(state.general.bannedData || {});
+      const bannedIPsBat = Object.values(state.battle.bannedData || {});
+      const allBannedIPs = [...bannedIPsGen, ...bannedIPsBat];
+      
+      const isBannedIp = currentIp && allBannedIPs.includes(currentIp);
+      const isBannedIdGen = currentUserId && state.general.bannedData && state.general.bannedData.hasOwnProperty(currentUserId);
+      const isBannedIdBat = currentUserId && state.battle.bannedData && state.battle.bannedData.hasOwnProperty(currentUserId);
+      const isBannedId = Boolean(isBannedIdGen || isBannedIdBat);
       
       if (isBannedIp || isBannedId) {
         document.body.innerHTML = "<h1 style='color:red; text-align:center; margin-top:50px;'>アクセスが禁止されています（BAN）</h1>";
@@ -165,8 +245,8 @@
 
     function isSpecialUser(userId) {
       if (userId === OWNER_ID || userId === "System" || userId === "Karupas") return true;
-      const u = usersData[userId];
-      return u && (u.isOwner || u.isSummit || u.isModerator || u.isManager || u.isSpeaker);
+      const u = getUserData(userId);
+      return Boolean(u.isOwner || u.isSummit || u.isModerator || u.isManager || u.isSpeaker);
     }
 
     function updateMaxLength() {
@@ -181,6 +261,13 @@
     });
     
     speakerFilter.addEventListener('change', renderBoard);
+
+    channelSelect.addEventListener('change', (e) => {
+      activeChannel = e.target.value;
+      localStorage.setItem('savedChannel', activeChannel);
+      checkBanStatus();
+      renderBoard();
+    });
 
     function linkify(text) {
       const container = document.createDocumentFragment();
@@ -245,7 +332,7 @@
     }
 
     setInterval(() => {
-      if (prohibitUntil) renderBoard();
+      if (state[activeChannel].prohibitUntil) renderBoard();
     }, 10000);
 
     function renderBoard() {
@@ -256,8 +343,12 @@
       const speakerOnly = speakerFilter.checked;
       tbody.innerHTML = ''; 
 
-      if (prohibitUntil && Date.now() < prohibitUntil) {
-        const d = new Date(prohibitUntil);
+      const curState = state[activeChannel];
+      const isBattle = (activeChannel === 'battle');
+
+      // 雑談チャンネルの場合のみ禁止時間制限の表示を行う
+      if (!isBattle && curState.prohibitUntil && Date.now() < curState.prohibitUntil) {
+        const d = new Date(curState.prohibitUntil);
         const hh = String(d.getHours()).padStart(2, '0');
         const mm = String(d.getMinutes()).padStart(2, '0');
         topicPrefix.innerHTML = `<span style="color:red;">${hh}:${mm}まで青シードによる投稿禁止 </span>`;
@@ -266,12 +357,12 @@
         topicPrefix.style.display = "none";
       }
 
-      for (let i = currentMessagesList.length - 1; i >= 0; i--) {
-        const msg = currentMessagesList[i];
+      for (let i = curState.messagesList.length - 1; i >= 0; i--) {
+        const msg = curState.messagesList[i];
         const no = i + 1;
         const snap = msg.userSnapshot || {}; 
 
-        let uData = usersData[msg.userId] || {};
+        let uData = getUserData(msg.userId);
         let isMsgOwner = snap.hasOwnProperty('isOwner') ? snap.isOwner : (msg.userId === OWNER_ID || uData.isOwner);
         let isMsgSummit = snap.hasOwnProperty('isSummit') ? snap.isSummit : uData.isSummit;
         let isMsgModerator = snap.hasOwnProperty('isModerator') ? snap.isModerator : uData.isModerator;
@@ -284,8 +375,8 @@
 
         if (speakerOnly && !isMsgSpecial) continue; 
 
-        if (!isMsgSpecial) {
-          const containsNG = ngWordsList.some(word => msg.message.includes(word));
+        if (!isBattle && !isMsgSpecial) {
+          const containsNG = curState.ngWordsList.some(word => msg.message.includes(word));
           if (containsNG) continue; 
         }
 
@@ -315,8 +406,15 @@
           tdName.title = "";
           tdMessage.textContent = "削除されました";
         } else {
-          const displayName = msg.name || '名無し';
+          let displayName = msg.name;
+          if (displayName !== undefined && displayName !== null && displayName.trim() === '' && displayName.length > 0) {
+            displayName = ' ';
+          } else if (!displayName && displayName !== ' ') {
+            displayName = '名無し';
+          }
+
           const spanName = document.createElement('span');
+          spanName.style.whiteSpace = "pre";
 
           if (msg.userId === OWNER_ID || msg.userId === "System" || msg.userId === "Karupas" || isMsgOwner) {
             spanName.style.color = "red";
@@ -357,41 +455,77 @@
         tbody.appendChild(tr);
       }
       
+      if (isBattle) {
+        const trSystem = document.createElement('tr');
+        trSystem.innerHTML = `
+          <td style="cursor: help;">0</td>
+          <td><span style="color: red; white-space: pre;">System</span></td>
+          <td>世界が始まったようだ…</td>
+        `;
+        tbody.appendChild(trSystem);
+      }
+
       currentTopicSpan.innerHTML = '';
-      if (globalTopic.isOwner) {
-        currentTopicSpan.innerHTML = formatOwnerMessage(globalTopic.text);
+      if (isBattle) {
+        currentTopicSpan.appendChild(linkify("ここは無法地帯。"));
       } else {
-        currentTopicSpan.appendChild(linkify(globalTopic.text));
+        if (curState.topic.isOwner) {
+          currentTopicSpan.innerHTML = formatOwnerMessage(curState.topic.text);
+        } else {
+          currentTopicSpan.appendChild(linkify(curState.topic.text));
+        }
       }
     }
 
-    onValue(settingsRef, (snapshot) => {
+    onValue(ref(dbGeneral, 'settings'), (snapshot) => {
       const s = snapshot.val() || {};
-      ngWordsMap = s.ngWords || {};
-      ngWordsList = Object.values(ngWordsMap);
-      maxPostsLimit = s.maxPosts || null;
-      
+      state.general.ngWordsMap = s.ngWords || {};
+      state.general.ngWordsList = Object.values(state.general.ngWordsMap);
+      state.general.maxPostsLimit = s.maxPosts || null;
       if (typeof s.topic === 'string') {
-        globalTopic = { text: s.topic, isOwner: false };
+        state.general.topic = { text: s.topic, isOwner: false };
       } else {
-        globalTopic = s.topic || { text: "特にありません", isOwner: false };
+        state.general.topic = s.topic || { text: "特にありません", isOwner: false };
       }
-      
-      bannedData = s.banned || {};
-      prohibitUntil = s.prohibitUntil || null;
+      state.general.bannedData = s.banned || {};
+      state.general.prohibitUntil = s.prohibitUntil || null;
       checkBanStatus(); 
       renderBoard();
     });
 
-    onValue(usersRef, (snapshot) => {
-      usersData = snapshot.val() || {};
+    onValue(ref(dbGeneral, 'users'), (snapshot) => {
+      state.general.usersData = snapshot.val() || {};
       renderBoard();
     });
 
-    onValue(messagesRef, (snapshot) => {
-      currentMessagesList = [];
+    onValue(ref(dbGeneral, 'messages'), (snapshot) => {
+      state.general.messagesList = [];
       snapshot.forEach((childSnapshot) => {
-        currentMessagesList.push({ key: childSnapshot.key, ...childSnapshot.val() });
+        state.general.messagesList.push({ key: childSnapshot.key, ...childSnapshot.val() });
+      });
+      renderBoard();
+    });
+
+    onValue(ref(dbBattle, 'settings'), (snapshot) => {
+      const s = snapshot.val() || {};
+      state.battle.ngWordsMap = s.ngWords || {};
+      state.battle.ngWordsList = Object.values(state.battle.ngWordsMap);
+      state.battle.maxPostsLimit = s.maxPosts || null;
+      state.battle.bannedData = s.banned || {};
+      state.battle.prohibitUntil = s.prohibitUntil || null;
+      checkBanStatus(); 
+      renderBoard();
+    });
+
+    onValue(ref(dbBattle, 'users'), (snapshot) => {
+      state.battle.usersData = snapshot.val() || {};
+      renderBoard();
+    });
+
+    onValue(ref(dbBattle, 'messages'), (snapshot) => {
+      state.battle.messagesList = [];
+      snapshot.forEach((childSnapshot) => {
+        state.battle.messagesList.push({ key: childSnapshot.key, ...childSnapshot.val() });
       });
       renderBoard();
     });
@@ -399,31 +533,41 @@
     document.getElementById('post-form').addEventListener('submit', (e) => {
       e.preventDefault();
       const message = msgInput.value.trim();
-      const name = nameInput.value.trim();
+      let name = nameInput.value;
+      if (name.trim() === '' && name.length > 0) {
+        name = ' ';
+      }
       const seedVal = seedInput.value.trim();
       if (!message || !seedVal) return;
 
+      const isBattle = (activeChannel === 'battle');
+      const currentDb = isBattle ? dbBattle : dbGeneral;
+      const curState = state[activeChannel];
+      const messagesRefCur = ref(currentDb, 'messages');
+
       const userId = generateId(seedVal);
+      const uData = getUserData(userId);
       const isSpec = isSpecialUser(userId);
       const charLimit = isSpec ? 500 : 50;
+      const isNormalUser = !isSpec;
 
       if (message.length > charLimit) {
         alert(`文字数制限エラーです。あなたの権限では${charLimit}文字までです。`);
         return;
       }
 
-      const uData = usersData[userId] || {};
-      const isNormalUser = !isSpec;
-      if (isNormalUser && prohibitUntil && Date.now() < prohibitUntil) {
-        const d = new Date(prohibitUntil);
+      // 雑談チャンネルでのみ青シード規制を適用
+      if (!isBattle && isNormalUser && curState.prohibitUntil && Date.now() < curState.prohibitUntil) {
+        const d = new Date(curState.prohibitUntil);
         const hh = String(d.getHours()).padStart(2, '0');
         const mm = String(d.getMinutes()).padStart(2, '0');
         alert(`現在、青シードによる投稿は制限されています。（${hh}:${mm}まで）`);
         return;
       }
 
-      if (!isSpec) {
-        const containsNG = ngWordsList.some(word => message.includes(word));
+      // 雑談チャンネルでのみNGワードチェックを適用
+      if (!isBattle && !isSpec) {
+        const containsNG = curState.ngWordsList.some(word => message.includes(word));
         if (containsNG) {
           alert("NGワードが含まれているため投稿できません。");
           return;
@@ -434,51 +578,59 @@
       localStorage.setItem('savedSeed', seedVal);
 
       let processPromises = [];
+      let isClearExecuted = false;
 
       const isCmdRoot = (userId === OWNER_ID); 
-      const isCmdOwner = isCmdRoot || (uData.isOwner);
-      const isCmdSummit = uData.isSummit;
-      const isCmdModerator = uData.isModerator;
-      const isCmdManager = uData.isManager;
+      const isCmdOwner = isCmdRoot || (uData.isOwner === true);
+      const isCmdSummit = (uData.isSummit === true);
+      const isCmdModerator = (uData.isModerator === true);
+      const isCmdManager = (uData.isManager === true);
 
       const isManagerOrHigher = isCmdOwner || isCmdSummit || isCmdModerator || isCmdManager;
       const isModeratorOrHigher = isCmdOwner || isCmdSummit || isCmdModerator;
       const isSummitOrHigher = isCmdOwner || isCmdSummit;
 
       if (currentIp) {
-        processPromises.push(update(ref(db, `users/${userId}`), { ip: currentIp }));
-      }
-
-      if (message.startsWith("/topic ") && isManagerOrHigher) {
-        const newTopic = message.substring(7).trim();
-        processPromises.push(set(ref(db, 'settings/topic'), {
-          text: newTopic,
-          isOwner: isCmdOwner
-        }));
+        processPromises.push(updateBothUsers(userId, { ip: currentIp }));
       }
 
       if (message.startsWith("/")) {
-        if (message.startsWith("/prohibit ")) {
-          if (!isCmdOwner) {
+        if (message.startsWith("/topic ") && isManagerOrHigher) {
+          if (isBattle) {
+            alert("バトルスタジアムの話題は「ここは無法地帯。」で固定されています。");
+          } else {
+            const newTopic = message.substring(7).trim();
+            processPromises.push(set(ref(dbGeneral, 'settings/topic'), {
+              text: newTopic,
+              isOwner: isCmdOwner
+            }));
+          }
+        }
+        else if (message.startsWith("/prohibit ")) {
+          if (isBattle) {
+            alert("バトルスタジアムでは/prohibitコマンドは無効です。");
+          } else if (!isCmdOwner) {
             alert("権限がありません。Owner以上が必要です。");
           } else {
             const mins = parseInt(message.split(" ")[1], 10);
             if (!isNaN(mins) && mins > 0) {
               const endTime = Date.now() + mins * 60 * 1000;
-              processPromises.push(set(ref(db, 'settings/prohibitUntil'), endTime));
+              processPromises.push(set(ref(dbGeneral, 'settings/prohibitUntil'), endTime));
             }
           }
         }
         else if (message === "/permit") {
-          if (!isCmdOwner) {
+          if (isBattle) {
+            alert("バトルスタジアムでは/permitコマンドは無効です。");
+          } else if (!isCmdOwner) {
             alert("権限がありません。Owner以上が必要です。");
           } else {
-            processPromises.push(remove(ref(db, 'settings/prohibitUntil')));
+            processPromises.push(remove(ref(dbGeneral, 'settings/prohibitUntil')));
           }
         }
         else if (message === "/disself") {
           if (!isCmdOwner) { 
-            processPromises.push(update(ref(db, `users/${userId}`), {
+            processPromises.push(updateBothUsers(userId, {
               isSummit: null,
               isModerator: null,
               isManager: null,
@@ -486,7 +638,6 @@
               nameColor: null,
               title: null
             }));
-            uData.isSummit = false; uData.isModerator = false; uData.isManager = false; uData.isSpeaker = false; uData.nameColor = null; uData.title = null;
           } else {
             alert("運営（Owner以上）は /disself を使用できません。");
           }
@@ -500,8 +651,8 @@
               if (targetId === OWNER_ID) {
                 alert("自身(KF81wqJ)への権限変更は無効です。");
               } else {
-                if (message.startsWith("/owner ")) processPromises.push(update(ref(db, `users/${targetId}`), { isOwner: true }));
-                else if (message.startsWith("/disowner ")) processPromises.push(update(ref(db, `users/${targetId}`), { isOwner: false }));
+                if (message.startsWith("/owner ")) processPromises.push(updateBothUsers(targetId, { isOwner: true }));
+                else if (message.startsWith("/disowner ")) processPromises.push(updateBothUsers(targetId, { isOwner: false }));
               }
             }
           }
@@ -513,13 +664,13 @@
             if (message.startsWith("/ban ")) {
               const targetId = message.substring(5).trim();
               if (targetId) {
-                const targetIp = usersData[targetId] && usersData[targetId].ip;
-                processPromises.push(update(ref(db, 'settings/banned'), { [targetId]: targetIp || "ID-ONLY" }));
+                const targetIp = getUserData(targetId).ip;
+                processPromises.push(updateBothBanned(targetId, targetIp || "ID-ONLY"));
               }
             } else if (message.startsWith("/unban ")) {
               const targetId = message.substring(7).trim();
               if (targetId) {
-                processPromises.push(remove(ref(db, `settings/banned/${targetId}`)));
+                processPromises.push(removeBothBanned(targetId));
               }
             }
           }
@@ -529,19 +680,34 @@
             alert("権限がありません。マネージャー以上が必要です。");
           } else {
             if (message === "/clear") {
-              if (confirm("すべての投稿データを削除しますか？")) processPromises.push(remove(messagesRef));
-              else return; 
+              if (confirm("すべての投稿データを削除しますか？")) {
+                isClearExecuted = true;
+                if (!isBattle) {
+                  // 雑談チャンネルで/clearが打たれた場合、初期コメントを追加
+                  const karupasText = "ｶﾙﾊﾟｽ".repeat(33);
+                  processPromises.push(
+                    remove(messagesRefCur).then(() => {
+                      return Promise.all([
+                        push(messagesRefCur, { name: "System", userId: "System", message: "自動削除しました", isDeleted: false, timestamp: serverTimestamp() }),
+                        push(messagesRefCur, { name: "カルパス財団", userId: "Karupas", message: karupasText, isDeleted: false, timestamp: serverTimestamp() })
+                      ]);
+                    })
+                  );
+                } else {
+                  processPromises.push(remove(messagesRefCur));
+                }
+              } else return; 
             } 
             else if (message.startsWith("/max ")) {
               const maxNum = parseInt(message.substring(5).trim(), 10);
-              if (!isNaN(maxNum) && maxNum > 0) processPromises.push(set(ref(db, 'settings/maxPosts'), maxNum));
+              if (!isNaN(maxNum) && maxNum > 0) processPromises.push(set(ref(currentDb, 'settings/maxPosts'), maxNum));
             }
             else if (message.startsWith("/del ")) {
               const parts = message.split(" ");
               parts.slice(1).forEach(p => {
                 const targetNo = parseInt(p, 10);
-                if (!isNaN(targetNo) && targetNo > 0 && targetNo <= currentMessagesList.length) {
-                  processPromises.push(update(messagesRef, { [`${currentMessagesList[targetNo - 1].key}/isDeleted`]: true }));
+                if (!isNaN(targetNo) && targetNo > 0 && targetNo <= curState.messagesList.length) {
+                  processPromises.push(update(messagesRefCur, { [`${curState.messagesList[targetNo - 1].key}/isDeleted`]: true }));
                 }
               });
             }
@@ -550,15 +716,15 @@
               if (target === "e") {
                 if (confirm("すべて削除状態にしますか？")) {
                   const updates = {};
-                  currentMessagesList.forEach(m => { updates[m.key + '/isDeleted'] = true; });
-                  processPromises.push(update(messagesRef, updates));
+                  curState.messagesList.forEach(m => { updates[m.key + '/isDeleted'] = true; });
+                  processPromises.push(update(messagesRefCur, updates));
                 } else return;
               } else if (target) {
                 const updates = {};
-                currentMessagesList.forEach(m => {
+                curState.messagesList.forEach(m => {
                   if (m.userId === target || (m.message && m.message.includes(target))) updates[m.key + '/isDeleted'] = true;
                 });
-                processPromises.push(update(messagesRef, updates));
+                processPromises.push(update(messagesRefCur, updates));
               }
             }
           }
@@ -570,26 +736,26 @@
             const parts = message.split(" ");
             if (message.startsWith("/NG ")) {
               const word = message.substring(4).trim();
-              if(word) processPromises.push(push(ref(db, 'settings/ngWords'), word));
+              if(word) processPromises.push(push(ref(currentDb, 'settings/ngWords'), word));
             }
             else if (message.startsWith("/OK ")) {
               const word = message.substring(4).trim();
               if(word) {
-                const key = Object.keys(ngWordsMap).find(k => ngWordsMap[k] === word);
-                if(key) processPromises.push(remove(ref(db, `settings/ngWords/${key}`)));
+                const key = Object.keys(curState.ngWordsMap).find(k => curState.ngWordsMap[k] === word);
+                if(key) processPromises.push(remove(ref(currentDb, `settings/ngWords/${key}`)));
               }
             }
             else if (message.startsWith("/color ")) {
               const colorCode = parts[1];
               const targetId = parts[2];
-              if (colorCode && targetId) processPromises.push(update(ref(db, `users/${targetId}`), { nameColor: colorCode }));
+              if (colorCode && targetId) processPromises.push(updateBothUsers(targetId, { nameColor: colorCode }));
             }
             else {
               const targetId = parts[1];
               if (targetId) {
-                if (message.startsWith("/add ")) processPromises.push(update(ref(db, `users/${targetId}`), { title: parts.slice(2).join(" ") }));
-                else if (message.startsWith("/speaker ")) processPromises.push(update(ref(db, `users/${targetId}`), { isSpeaker: true }));
-                else if (message.startsWith("/disspeaker ")) processPromises.push(update(ref(db, `users/${targetId}`), { isSpeaker: false }));
+                if (message.startsWith("/add ")) processPromises.push(updateBothUsers(targetId, { title: parts.slice(2).join(" ") }));
+                else if (message.startsWith("/speaker ")) processPromises.push(updateBothUsers(targetId, { isSpeaker: true }));
+                else if (message.startsWith("/disspeaker ")) processPromises.push(updateBothUsers(targetId, { isSpeaker: false }));
               }
             }
           }
@@ -600,10 +766,10 @@
           } else {
             const targetId = message.split(" ")[1];
             if (targetId) {
-              if (message.startsWith("/manager ")) processPromises.push(update(ref(db, `users/${targetId}`), { isManager: true }));
-              else if (message.startsWith("/dismanager ")) processPromises.push(update(ref(db, `users/${targetId}`), { isManager: false }));
-              else if (message.startsWith("/moderator ")) processPromises.push(update(ref(db, `users/${targetId}`), { isModerator: true }));
-              else if (message.startsWith("/dismoderator ")) processPromises.push(update(ref(db, `users/${targetId}`), { isModerator: false }));
+              if (message.startsWith("/manager ")) processPromises.push(updateBothUsers(targetId, { isManager: true }));
+              else if (message.startsWith("/dismanager ")) processPromises.push(updateBothUsers(targetId, { isManager: false }));
+              else if (message.startsWith("/moderator ")) processPromises.push(updateBothUsers(targetId, { isModerator: true }));
+              else if (message.startsWith("/dismoderator ")) processPromises.push(updateBothUsers(targetId, { isModerator: false }));
             }
           }
         }
@@ -613,8 +779,8 @@
           } else {
             const targetId = message.split(" ")[1];
             if (targetId) {
-              if (message.startsWith("/summit ")) processPromises.push(update(ref(db, `users/${targetId}`), { isSummit: true }));
-              else if (message.startsWith("/dissumit ")) processPromises.push(update(ref(db, `users/${targetId}`), { isSummit: false }));
+              if (message.startsWith("/summit ")) processPromises.push(updateBothUsers(targetId, { isSummit: true }));
+              else if (message.startsWith("/dissumit ")) processPromises.push(updateBothUsers(targetId, { isSummit: false }));
             }
           }
         }
@@ -624,26 +790,26 @@
         nameColor: uData.nameColor || null,
         title: uData.title || null,
         isOwner: isCmdOwner,
-        isSummit: isCmdSummit || false,
-        isModerator: isCmdModerator || false,
-        isManager: isCmdManager || false,
-        isSpeaker: uData.isSpeaker || false
+        isSummit: isCmdSummit,
+        isModerator: isCmdModerator,
+        isManager: isCmdManager,
+        isSpeaker: uData.isSpeaker === true
       };
 
-      const willExceedMax = (maxPostsLimit && currentMessagesList.length + 1 >= maxPostsLimit);
+      const willExceedMax = !isClearExecuted && curState.maxPostsLimit && (curState.messagesList.length + 1 >= curState.maxPostsLimit);
       
       let pushMessageTask;
       if (willExceedMax) {
-        pushMessageTask = remove(messagesRef).then(() => {
+        pushMessageTask = remove(messagesRefCur).then(() => {
           const karupasText = "ｶﾙﾊﾟｽ".repeat(33);
           return Promise.all([
-            push(messagesRef, { name: "System", userId: "System", message: "自動削除しました", isDeleted: false, timestamp: serverTimestamp() }),
-            push(messagesRef, { name: "カルパス財団", userId: "Karupas", message: karupasText, isDeleted: false, timestamp: serverTimestamp() }),
-            push(messagesRef, { name: name, userId: userId, message: message, isDeleted: false, timestamp: serverTimestamp(), userSnapshot: userSnapshot })
+            push(messagesRefCur, { name: "System", userId: "System", message: "自動削除しました", isDeleted: false, timestamp: serverTimestamp() }),
+            push(messagesRefCur, { name: "カルパス財団", userId: "Karupas", message: karupasText, isDeleted: false, timestamp: serverTimestamp() }),
+            push(messagesRefCur, { name: name, userId: userId, message: message, isDeleted: false, timestamp: serverTimestamp(), userSnapshot: userSnapshot })
           ]);
         });
       } else {
-        pushMessageTask = push(messagesRef, {
+        pushMessageTask = push(messagesRefCur, {
           name: name,
           userId: userId,
           message: message,
@@ -656,11 +822,12 @@
       Promise.all(processPromises)
         .then(() => pushMessageTask)
         .then(() => {
-          window.location.reload();
+          msgInput.value = '';
+          window.location.reload(); 
         })
         .catch((error) => {
-          alert("処理に失敗しました。");
-          console.error(error);
+          console.error("Firebase Error: ", error);
+          alert("処理に失敗しました。Firebase側のルール設定(Database Rules)が読み書き許可になっているか確認してください。");
         });
     });
   </script>
