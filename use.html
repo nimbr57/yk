@@ -3,144 +3,170 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>掲示板の使い方・コマンド一覧</title>
+  <title>使い方 - 連番を簡単に生成！！</title>
   <style>
     body {
       font-family: sans-serif;
       line-height: 1.6;
-      padding: 20px;
-      max-width: 800px;
-      margin: 0 auto;
-      background-color: #f9f9f9;
+      margin: 20px;
     }
-    h1 {
-      border-bottom: 2px solid #333;
+    h1, h2, h3 {
+      color: #333;
+      border-bottom: 2px solid #ccc;
       padding-bottom: 5px;
     }
-    h2 {
-      color: #333;
-      margin-top: 30px;
-      border-left: 4px solid #e60000;
-      padding-left: 10px;
+    .darkmode--activated h1, .darkmode--activated h2, .darkmode--activated h3 {
+      color: #eee;
+      border-bottom: 2px solid #555;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 20px;
-      background-color: #fff;
     }
     th, td {
-      border: 1px solid #ddd;
-      padding: 10px;
+      border: 1px solid #aaa;
+      padding: 8px;
       text-align: left;
     }
     th {
-      background-color: #f2f2f2;
+      background-color: #f4f4f4;
     }
-    .role-owner { color: red; font-weight: bold; }
-    .role-summit { color: darkcyan; font-weight: bold; }
-    .role-moderator { color: #9400d3; font-weight: bold; }
-    .role-manager { color: red; font-weight: bold; }
-    .role-speaker { color: #ff8c00; font-weight: bold; }
-    .role-normal { color: blue; font-weight: bold; }
-    code {
-      background-color: #eee;
-      padding: 2px 5px;
-      border-radius: 3px;
+    .darkmode--activated th {
+      background-color: #333;
+    }
+    .note {
+      background-color: #fffacd;
+      padding: 10px;
+      border-left: 5px solid #ffeb3b;
+      margin-bottom: 20px;
+      color: #333;
+    }
+    .darkmode--activated .note {
+      background-color: #555;
+      border-left: 5px solid #ffeb3b;
+      color: #eee;
     }
   </style>
 </head>
 <body>
 
-  <h1>掲示板の使い方・コマンド一覧</h1>
-  <p><a href="index.html">← 掲示板へ戻る</a></p>
+  <a href="index.html">← 掲示板へ戻る</a>
 
-  <h2>基本の仕組み</h2>
+  <h1>連番を簡単に生成！！ - 使い方ガイド</h1>
+
+  <h2>💡 はじめに</h2>
+  <p>当掲示板は、パスワード不要で完全に匿名性を保ちながらリアルタイムチャットを楽しめる次世代の掲示板です。<br>
+  投稿フォームからコマンドを入力することで、管理作業やカスタマイズが直感的に行えます。</p>
+
+  <h2>🔑 名前とIDについて (シード値)</h2>
+  <p>投稿時の「シード」は、あなただけの固有のIDを生成するための<strong>パスワードのようなもの</strong>です。</p>
   <ul>
-    <li><strong>シード値:</strong> 投稿時に入力するシード値はパスワードのようなものです。この文字列を元にあなた専用の7桁のID（英数字）が生成されます。</li>
-    <li><strong>文字数制限:</strong> 通常のIDは <strong>50文字</strong> まで、Speaker以上の権限を持つIDは <strong>500文字</strong> まで投稿可能です。</li>
-    <li><strong>URL自動リンク:</strong> 投稿内容や話題にURLを含めると、自動的にクリックできるリンクになります。</li>
-    <li><strong>Discord連携:</strong> 投稿したメッセージは自動的にDiscordサーバーに記録されます。</li>
+    <li>入力したシード値はそのまま保存されず、高度な暗号化（SHA-256）によってハッシュ化され、その先頭7文字があなたのIDとして表示されます。</li>
+    <li>同じシード値を入力すれば、いつでも同じIDで投稿できます。</li>
+    <li>他の人にシード値を知られないように管理してください。</li>
   </ul>
 
-  <h2>権限（ランク）について</h2>
-  <p>特定のユーザーには管理・モデレーションのための権限が付与されます。権限によって名前に付くIDの色が変わり、使用できるコマンドが異なります。</p>
-  
+  <h2>✨ 便利な機能</h2>
+  <ul>
+    <li><strong>IDのワンクリックコピー:</strong> 投稿一覧の「名前」の部分をクリックすると、その人のIDを自動でコピーできます。</li>
+    <li><strong>投稿日時の確認:</strong> 投稿番号（No）にマウスカーソルを合わせる（スマホの場合は長押し）と、正確な投稿日時が表示されます。</li>
+    <li><strong>URLの自動リンク:</strong> 投稿文や「今の話題」にURLを含めると、自動でクリックできるリンクになります。</li>
+    <li><strong>過去ログの保護:</strong> 名前や色、称号を後からコマンドで変更しても、過去の投稿のデザインは書き換わりません（スナップショット機能）。</li>
+  </ul>
+
+  <h2>👑 権限システムと色</h2>
+  <p>ユーザーには様々な権限ランクがあり、ランクに応じてIDの色が変わります。文字数は一般ユーザーが50文字、権限持ちが500文字までです。</p>
   <table>
     <tr>
       <th>権限名</th>
       <th>IDの色</th>
-      <th>特徴・できること</th>
+      <th>概要</th>
     </tr>
     <tr>
-      <td class="role-owner">Owner (運営)</td>
-      <td>赤</td>
-      <td>掲示板の管理者。すべてのコマンドを使用可能。</td>
+      <td>Root Owner</td>
+      <td>非表示（赤名）</td>
+      <td>マスター管理者（KF81wqJ）。すべてのコマンドが使用可能。</td>
     </tr>
     <tr>
-      <td class="role-summit">Summit</td>
+      <td>Owner</td>
+      <td>非表示（赤名）</td>
+      <td>運営。HTMLタグの利用や、青IDの投稿制限などが可能。</td>
+    </tr>
+    <tr>
+      <td>Summit</td>
       <td>ダークシアン</td>
-      <td>他のユーザーにManager、Moderator権限を付与できる。</td>
+      <td>上級管理者。ユーザーのBANなどが可能。</td>
     </tr>
     <tr>
-      <td class="role-moderator">Moderator</td>
+      <td>Moderator</td>
       <td>紫</td>
-      <td>名前の装飾や、NGワードの設定、Speaker権限の付与が可能。</td>
+      <td>中級管理者。称号の付与、色の変更、NGワード設定が可能。</td>
     </tr>
     <tr>
-      <td class="role-manager">Manager</td>
+      <td>Manager</td>
       <td>赤</td>
-      <td>投稿の削除、自動削除の件数設定、話題の変更が可能。</td>
+      <td>投稿管理者。投稿の削除、クリア、話題の変更が可能。</td>
     </tr>
     <tr>
-      <td class="role-speaker">Speaker</td>
+      <td>Speaker</td>
       <td>オレンジ</td>
-      <td>500文字までの長文投稿が可能。NGワードの制限を受けない。</td>
+      <td>スピーカー。専用フィルターでの表示対象になります。</td>
     </tr>
     <tr>
-      <td class="role-normal">通常ユーザー</td>
+      <td>一般ユーザー</td>
       <td>青</td>
-      <td>基本のランク。50文字制限、NGワード対象。</td>
+      <td>基本の権限です。</td>
     </tr>
   </table>
 
-  <h2>コマンド一覧</h2>
-  <p>メッセージ入力欄に以下のコマンドを入力して送信することで実行できます。（※必要な権限を持たない場合は弾かれます）</p>
+  <h2>🛠️ コマンド一覧</h2>
+  <p>メッセージ欄の先頭に以下のコマンドを入力して送信することで実行されます。</p>
 
-  <h3>Manager以上の権限が必要</h3>
+  <h3>一般向けコマンド</h3>
   <ul>
-    <li><code>/topic {話題}</code> : 掲示板上部の「今の話題」を変更します。（例: <code>/topic 好きな食べ物</code>）</li>
-    <li><code>/clear</code> : 掲示板の全投稿データを完全に削除し、番号をリセットします。</li>
-    <li><code>/max {数字}</code> : 指定した投稿数に達した瞬間に、自動で全件削除されるように設定します。</li>
-    <li><code>/del {番号1} {番号2}...</code> : 指定した投稿番号を「削除されました」状態にします。スペース区切りで複数指定可能です。</li>
-    <li><code>/destroy {文字列}</code> : 指定した文字列が含まれる投稿、または指定したIDの投稿を一括で削除状態にします。<br>
-      ※ <code>/destroy e</code> と入力するとすべての投稿が削除状態になります。
-    </li>
+    <li><code>/disself</code> : 自分の称号、色、役職をすべてリセットし、一般ユーザー（青ID）に戻ります。（※Owner以上の運営には効きません）</li>
   </ul>
 
-  <h3>Moderator以上の権限が必要</h3>
+  <h3>Manager（マネージャー）以上</h3>
   <ul>
-    <li><code>/NG {文字列}</code> : 指定した言葉をNGワードに登録します。通常ユーザーはその言葉を投稿できなくなり、過去の投稿も非表示になります。</li>
-    <li><code>/OK {文字列}</code> : 登録されているNGワードを解除します。</li>
-    <li><code>/color {カラーコード} {ID}</code> : 指定したIDの「名前の色」を変更します。（例: <code>/color #ff0000 a1b2c3d</code>）</li>
-    <li><code>/add {ID} {称号}</code> : 指定したIDに称号（タイトル）を付与します。</li>
-    <li><code>/speaker {ID}</code> : 対象ユーザーにSpeaker権限を付与します。</li>
-    <li><code>/disspeaker {ID}</code> : 対象ユーザーのSpeaker権限を解除します。</li>
+    <li><code>/del [No]</code> : 指定したレス番号の投稿を「削除されました」にします。複数指定可（例: /del 1 3 5）</li>
+    <li><code>/destroy [文字]</code> : 指定した文字列を含む投稿、または指定IDの投稿を一括で削除します。（<code>/destroy e</code> で全レス削除）</li>
+    <li><code>/clear</code> : 掲示板のすべてのデータを完全に消去します。</li>
+    <li><code>/topic [文字]</code> : 「今の話題」を変更します。</li>
+    <li><code>/max [数]</code> : 掲示板の最大投稿数を設定します。これを超えると自動クリアされます。</li>
   </ul>
 
-  <h3>Summit以上の権限が必要</h3>
+  <h3>Moderator（モデレーター）以上</h3>
   <ul>
-    <li><code>/manager {ID}</code> : Manager権限を付与します。</li>
-    <li><code>/dismanager {ID}</code> : Manager権限を解除します。</li>
-    <li><code>/moderator {ID}</code> : Moderator権限を付与します。</li>
-    <li><code>/dismoderator {ID}</code> : Moderator権限を解除します。</li>
+    <li><code>/add [ID] [称号]</code> : ユーザーにピンク色のカスタム称号を付与します。</li>
+    <li><code>/color [色] [ID]</code> : ユーザーの名前の色を変更します。（例: /color blue ABCD123）</li>
+    <li><code>/speaker [ID]</code> : ユーザーにSpeaker権限を付与 / 剥奪（<code>/disspeaker [ID]</code>）</li>
+    <li><code>/NG [単語]</code> : 掲示板のNGワードを追加 / 解除（<code>/OK [単語]</code>）</li>
   </ul>
 
-  <h3>Owner (運営) のみ使用可能</h3>
+  <h3>Summit（サミット）以上</h3>
   <ul>
-    <li><code>/summit {ID}</code> : Summit権限を付与します。</li>
-    <li><code>/dissumit {ID}</code> : Summit権限を解除します。</li>
+    <li><code>/ban [ID]</code> : 指定したIDのユーザー（およびそのIPアドレス）をアクセス禁止にします。</li>
+    <li><code>/unban [ID]</code> : 指定したIDのアクセス禁止を解除します。</li>
+    <li><code>/manager [ID]</code> : ユーザーにManager権限を付与 / 剥奪（<code>/dismanager [ID]</code>）</li>
+    <li><code>/moderator [ID]</code> : ユーザーにModerator権限を付与 / 剥奪（<code>/dismoderator [ID]</code>）</li>
   </ul>
 
+  <h3>Owner（オーナー）以上【運営】</h3>
+  <p class="note">※OwnerおよびRoot Ownerは、投稿文と「今の話題（/topic）」内でHTMLタグ（&lt;b&gt;や&lt;span style="color:red;"&gt;など）を使用できます。</p>
+  <ul>
+    <li><code>/prohibit [分]</code> : 指定した分数の間、一般ユーザー（青ID）の投稿をすべて禁止にします。</li>
+    <li><code>/permit</code> : /prohibit による制限時間を強制的に解除します。</li>
+    <li><code>/summit [ID]</code> : ユーザーにSummit権限を付与 / 剥奪（<code>/dissumit [ID]</code>）</li>
+  </ul>
+
+  <h3>Root Owner 専用</h3>
+  <ul>
+    <li><code>/owner [ID]</code> : ユーザーにOwner権限を付与 / 剥奪（<code>/disowner [ID]</code>）</li>
+  </ul>
+
+  <script src="https://cdn.jsdelivr.net/npm/darkmode-js@1.5.7/lib/darkmode-js.min.js"></script>
+  <script>window.addEventListener('load', () => new Darkmode().showWidget());</script>
 </body>
 </html>
